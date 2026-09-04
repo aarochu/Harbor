@@ -45,17 +45,20 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 
 ## M1 — Repository intelligence
 
-- [ ] `github_clone_repo()` — shallow clone into an isolated workdir **[CRITICAL]**
-- [ ] `github_read_files()` — path-scoped reads with a size cap
-- [ ] `detect_framework()` — FastAPI / Express / Next.js **[CRITICAL]**
-- [ ] `inspect_package_json()` — scripts, deps, package manager from lockfile
-- [ ] Python manifest inspection — `requirements.txt`, `pyproject.toml`
-- [ ] `inspect_dockerfile()` — presence, base image, exposed port, CMD
-- [ ] `inspect_environment()` — required env vars from code refs + `.env.example`
-- [ ] Port detection — literal, `os.environ`/`process.env`, framework default **[CRITICAL]**
-- [ ] Database detection — driver imports, connection-string references
-- [ ] Emit a single structured `RepoProfile` the agent reasons over
-- [ ] Verified: all three demo repos profile correctly with zero hints **[CRITICAL]**
+- [x] `github_clone_repo()` — shallow clone into an isolated workdir; https/GitHub-only URL allowlist, argv (never shell), token via env not URL **[CRITICAL]**
+- [x] `github_read_files()` — path-scoped reads with a size cap; traversal refused at the boundary, truncation reported
+- [x] `detect_framework()` — FastAPI / Express / Next.js, with confidence + evidence **[CRITICAL]**
+- [x] `inspect_package_json()` — scripts, deps, package manager from lockfile (lockfile beats the `packageManager` field)
+- [x] Python manifest inspection — `requirements.txt`, `pyproject.toml` (PEP 621 + Poetry)
+- [x] `inspect_dockerfile()` — presence, final-stage base image, exposed ports, CMD/ENTRYPOINT
+- [x] `inspect_environment()` — required env vars from code refs + `.env.example`, secret-shaped names flagged for escalation
+- [x] Port detection — literal, `os.environ`/`process.env`, framework default; `bindsEnvPort` is the class A signal **[CRITICAL]**
+- [x] Database detection — driver deps + connection-string schemes; sqlite/redis alone do not trigger a paid provision
+- [x] Emit a single structured `RepoProfile` the agent reasons over — every finding carries file/line evidence
+- [x] Verified: all three demo repos profile correctly with zero hints — fixtures in `agent/fixtures/`, asserted in `repo/profile.test.ts` **[CRITICAL]**
+
+Profile any public repo without credentials, no model call involved:
+`cd agent && npm run profile -- https://github.com/owner/repo`
 
 ---
 
@@ -136,7 +139,7 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 - [ ] Three consecutive clean end-to-end runs **[CRITICAL]**
 
 ### Tests
-- [ ] Unit tests for framework/port/dependency detection
+- [x] Unit tests for framework/port/dependency detection
 - [ ] Recorded-fixture tests for diagnosis on real log output
 - [ ] Integration test for the full loop against a stubbed provider
 - [x] Guardrail regression tests (injection, budget, redaction)
@@ -146,9 +149,9 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 ## M7 — Demo & submission
 
 ### Demo repos **[CRITICAL]**
-- [ ] `harbor-demo-clean` — FastAPI + Postgres, deploys green
-- [ ] `harbor-demo-missing-dep` — imports a package that isn't in the manifest
-- [ ] `harbor-demo-port-mismatch` — app binds `8000`, platform expects `$PORT`
+- [~] `harbor-demo-clean` — FastAPI + Postgres, deploys green; source written at `agent/fixtures/harbor-demo-clean`, **not yet pushed as a repo**
+- [~] `harbor-demo-missing-dep` — imports `httpx`, absent from the manifest; source written, **not yet pushed as a repo**
+- [~] `harbor-demo-port-mismatch` — app binds `8000`, platform expects `$PORT`; source written, **not yet pushed as a repo**
 - [ ] Each verified to fail in exactly the intended way, repeatably
 
 ### Video (5:00) **[CRITICAL]**

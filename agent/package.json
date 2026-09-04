@@ -1,9 +1,10 @@
 {
   "name": "harbor-agent",
   "version": "1.0.0",
-  "description": "Harbor — autonomous deployment agent (Strands)",
+  "description": "Harbor \u2014 autonomous deployment agent (Strands)",
   "scripts": {
     "dev": "tsx --env-file-if-exists=.env src/agent.ts",
+    "profile": "tsx src/repo/cli.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "start": "node dist/agent.js",
