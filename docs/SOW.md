@@ -189,7 +189,7 @@ Harbor is done when, from a cold start:
 - A GitHub token with repo read/write on the demo repositories is available.
 - A Render account with API access and free-tier web service + Postgres is available.
 - Demo repositories are single-service and public.
-- The AWS IAM principal has Bedrock invoke permission (see [bedrock-policy.json](bedrock-policy.json)) and model access enabled in the target region.
+- The AWS IAM principal has Bedrock invoke permission and model access enabled in the target region, in the account that holds the credits — see [aws-setup.md](aws-setup.md).
 - Judging weights end-to-end autonomous work over framework breadth.
 
 ## 12. Tech stack
