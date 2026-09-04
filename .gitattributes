@@ -1,0 +1,30 @@
+# Normalize line endings across machines.
+# Overrides a global core.autocrlf, so every checkout of Harbor matches the
+# repository: LF in the index and LF in the working tree.
+* text=auto eol=lf
+
+# Shell scripts and Docker entrypoints break outright with CRLF.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.Dockerfile text eol=lf
+
+# Windows-native scripts must keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binaries: never touch, never diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.zip binary
+*.mp4 binary
+
+# Lockfiles are generated; collapse them in diffs and reviews.
+package-lock.json -diff linguist-generated
