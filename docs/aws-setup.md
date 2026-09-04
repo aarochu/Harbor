@@ -61,21 +61,22 @@ Interface (CLI)*. Copy both values now; the secret is shown once.
 aws configure --profile harbor
 ```
 
-Enter the key and secret, region `us-west-2`, output `json`. This writes a new
+Enter the key and secret, region `us-east-1`, output `json`. This writes a new
 profile and leaves `default` alone.
 
 **6. Enable model access**
 
-Bedrock console → **switch the region to `us-west-2`** → Model access → enable
+Bedrock console → **switch the region to `us-east-1`** → Model access → enable
 **Anthropic Claude Sonnet 4.6**.
 
 This is a separate gate from IAM, and its failure mode looks identical: an
 `AccessDeniedException` on invoke. Having the policy attached is not sufficient
 on its own.
 
-Claude on Bedrock is effectively a `us-west-2` story. The CLI on this machine
-defaults to `us-west-1`, which is why `AWS_REGION` is pinned in `.env` rather
-than inherited.
+Model access is granted per region. The CLI's `default` profile on this machine
+points at `us-west-1`, and `AWS_REGION` in `.env` overrides the profile region
+outright — `model.ts` reads the variable, not your AWS config. All three have to
+name the same region.
 
 **7. Point Harbor at the profile**
 
@@ -83,7 +84,7 @@ In `agent/.env`:
 
 ```
 AWS_PROFILE=harbor
-AWS_REGION=us-west-2
+AWS_REGION=us-east-1
 ```
 
 Leave `ANTHROPIC_API_KEY` empty — `agent/src/model.ts` prefers it when set and

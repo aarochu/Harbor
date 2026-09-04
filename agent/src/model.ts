@@ -30,7 +30,7 @@ export function createModel(): Model {
 
   return new BedrockModel({
     modelId: modelId ?? 'global.anthropic.claude-sonnet-4-6',
-    region: process.env.AWS_REGION ?? 'us-west-2',
+    region: process.env.AWS_REGION ?? 'us-east-1',
     maxTokens: MAX_OUTPUT_TOKENS,
     cacheConfig: {},
   })
