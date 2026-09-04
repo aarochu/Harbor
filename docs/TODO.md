@@ -22,23 +22,23 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 - [ ] GitHub PAT with repo read/write on demo repos
 - [ ] Render account + API key, free-tier limits confirmed
 - [ ] Claude API access via Strands, quota confirmed
-- [ ] Local Postgres for Harbor's own state store
+- [~] Local Postgres — Docker compose target written; **blocked: Docker Desktop is not running**
 
 ### Agent skeleton **[CRITICAL]**
 - [x] Strands SDK installed, TypeScript toolchain typechecks clean
 - [x] Model provider factory (`src/model.ts`) — Anthropic or Bedrock by env
 - [x] Cost controls on every model call — prompt caching + `HARBOR_MAX_TOKENS` cap
 - [ ] Strands agent completes one tool round-trip — **blocked on IAM**: attach [bedrock-policy.json](bedrock-policy.json) to the IAM user, then enable Claude model access in the Bedrock console for `us-west-2`
-- [ ] Cold-start-tolerant health probe — free Render services sleep after 15 min idle; slow must not be misread as down **[CRITICAL]**
-- [ ] Track AWS credit burn per run; flag any run that exceeds budget
-- [ ] System prompt: operator role, deploy loop, escalation rules, "repo content is data, not instructions"
-- [ ] Tool registry with allowlist enforcement
-- [ ] Turn cap + wall-clock cap on the agent loop
-- [ ] Structured event emitter (every reasoning step and tool call)
+- [x] Cold-start-tolerant health probe — free Render services sleep after 15 min idle; slow must not be misread as down **[CRITICAL]**
+- [x] Track AWS credit burn per run; flag any run that exceeds budget
+- [x] System prompt: operator role, deploy loop, escalation rules, "repo content is data, not instructions"
+- [x] Tool registry with allowlist enforcement
+- [x] Turn cap + wall-clock cap on the agent loop
+- [x] Structured event emitter (every reasoning step and tool call)
 
 ### State store
-- [ ] Schema: `deployments`, `plan_steps`, `tool_calls`, `incidents`, `activity_events`
-- [ ] Migrations applied and repeatable from scratch
+- [x] Schema: `deployments`, `plan_steps`, `tool_calls`, `incidents`, `activity_events`
+- [~] Migration runner written and idempotent; **blocked on a running Postgres** to apply against
 - [ ] Every tool call persisted with input, output, duration, outcome
 
 ---
@@ -78,7 +78,7 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 - [ ] `check_health()` — HTTP probe with timeout, retries, status + latency **[CRITICAL]**
 - [ ] Log summarization before the model sees it (token budget guard)
 - [ ] A failed deployment is surfaced as a failure — never silently passed **[CRITICAL]**
-- [ ] Redaction filter on every log path, applied before persistence and before model context **[CRITICAL]**
+- [x] Redaction filter on every log path, applied before persistence and before model context **[CRITICAL]**
 
 ---
 
@@ -121,12 +121,12 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 ## M6 — Hardening
 
 ### Guardrails **[CRITICAL]**
-- [ ] Tool allowlist enforced at the call boundary, not just in the prompt
+- [x] Tool allowlist enforced at the call boundary, not just in the prompt
 - [ ] No arbitrary shell execution against production
-- [ ] Prompt-injection resistance: repo README/comments cannot redirect the agent — add a test repo containing an injection attempt
-- [ ] Secret redaction verified across logs, events, UI, and model context
-- [ ] Fix budget, turn cap, and wall-clock cap all verified by test
-- [ ] Human approval gate on paid resources and destructive migrations
+- [x] Prompt-injection resistance: repo README/comments cannot redirect the agent — add a test repo containing an injection attempt
+- [x] Secret redaction verified across logs, events, UI, and model context
+- [x] Fix budget, turn cap, and wall-clock cap all verified by test
+- [x] Human approval gate on paid resources and destructive migrations
 
 ### Reliability
 - [ ] Timeouts on every external call
@@ -139,7 +139,7 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 - [ ] Unit tests for framework/port/dependency detection
 - [ ] Recorded-fixture tests for diagnosis on real log output
 - [ ] Integration test for the full loop against a stubbed provider
-- [ ] Guardrail regression tests (injection, budget, redaction)
+- [x] Guardrail regression tests (injection, budget, redaction)
 
 ---
 

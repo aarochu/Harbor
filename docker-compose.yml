@@ -1,0 +1,32 @@
+# Local development database for Harbor's own state store.
+#
+# Not production, and not the database Harbor provisions for deployed apps —
+# this is where deployments, steps, tool calls, incidents, and activity events
+# are recorded (see agent/src/db/schema.sql).
+#
+#   docker compose up -d
+#   cd agent && npm run db:migrate
+#
+# Port 5433 avoids colliding with a Postgres already running on 5432.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: harbor-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: harbor
+      POSTGRES_DB: harbor
+      # Local dev only. Never used outside this compose file.
+      POSTGRES_PASSWORD: harbor_local_dev
+    ports:
+      - '5433:5432'
+    volumes:
+      - harbor-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U harbor -d harbor']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  harbor-pgdata:
