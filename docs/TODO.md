@@ -10,13 +10,13 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 
 ### Repo & tooling
 - [x] Scaffold `agent/` (TypeScript + Strands SDK), `docs/`
-- [ ] Scaffold `web/` (Next.js)
+- [x] Scaffold `web/` (Next.js 16, App Router, TypeScript, Tailwind) with a mission-control shell
 - [x] Node deps pinned, `package-lock.json` committed
 - [x] `.env.example` with every required key, no real values
 - [x] `.gitignore` covers `.env`, `node_modules`, `dist`, `.next`
 - [x] Secrets loaded from env only — never committed, never logged
 - [x] Scripts: `dev`, `typecheck`, `build`, `start`
-- [ ] Add `test` and `lint` scripts
+- [x] `lint` and `test` in both packages — ESLint + `node:test` (agent), ESLint + Vitest/RTL (web)
 
 ### Accounts & credentials
 - [ ] GitHub PAT with repo read/write on demo repos
