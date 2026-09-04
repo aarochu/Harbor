@@ -64,11 +64,11 @@ Profile any public repo without credentials, no model call involved:
 
 ## M2 — Deployment execution (happy path)
 
-- [ ] Render API client — auth, retries, backoff, typed errors
-- [ ] `deploy_application()` — create web service from repo + branch **[CRITICAL]**
-- [ ] `configure_database()` — provision Postgres, wire `DATABASE_URL` **[CRITICAL]**
-- [ ] `set_environment_variable()` — write-only, value never returned or logged **[CRITICAL]**
-- [ ] `get_deployment_status()` — poll to terminal state with a timeout
+- [x] Render API client — bearer auth, method-aware retries, jittered backoff, `Retry-After`, typed errors (`RenderApiError`/`Auth`/`NotFound`/`RateLimit`/`Timeout`)
+- [~] `deploy_application()` — `createWebService` / `findOrCreateWebService` written and unit-tested; **unverified against the live API** (needs RENDER_API_KEY) **[CRITICAL]**
+- [~] `configure_database()` — `createPostgres` + `getPostgresConnectionInfo` written, every returned field auto-registered for redaction; **wiring and approval gate still to do** **[CRITICAL]**
+- [x] `set_environment_variable()` — `setEnvVar` returns `void` by design; uses the single-key endpoint because the bulk `PUT` deletes omitted vars **[CRITICAL]**
+- [x] `get_deployment_status()` — `waitForDeploy` polls to terminal state; `timed_out` is a third outcome, never reported as failure
 - [ ] `run_build()` / `run_tests()` — sandboxed, capped, streaming output
 - [ ] End-to-end: clean repo -> live URL, unattended **[CRITICAL]**
 
@@ -132,9 +132,9 @@ Profile any public repo without credentials, no model call involved:
 - [x] Human approval gate on paid resources and destructive migrations
 
 ### Reliability
-- [ ] Timeouts on every external call
-- [ ] Backoff + retry on Render and GitHub rate limits
-- [ ] Idempotent deploys — a retry doesn't create duplicate services
+- [x] Timeouts on every external call — `AbortController` per request in the Render client; `health.ts` already had per-attempt and total caps
+- [~] Backoff + retry on Render rate limits done (exponential + jitter, honours `Retry-After`); **GitHub side still to do**
+- [x] Idempotent deploys — `findOrCreateWebService` keys on the service name; creates are never retried on 5xx, since the resource may already exist
 - [ ] Orphaned Render resource cleanup script
 - [ ] Three consecutive clean end-to-end runs **[CRITICAL]**
 
