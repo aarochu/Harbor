@@ -70,7 +70,7 @@ Profile any public repo without credentials, no model call involved:
 - [x] `set_environment_variable()` — `setEnvVar` returns `void` by design; uses the single-key endpoint because the bulk `PUT` deletes omitted vars **[CRITICAL]**
 - [x] `get_deployment_status()` — `waitForDeploy` polls to terminal state; `timed_out` is a third outcome, never reported as failure
 - [ ] `run_build()` / `run_tests()` — sandboxed, capped, streaming output
-- [ ] End-to-end: clean repo -> live URL, unattended **[CRITICAL]**
+- [~] End-to-end: clean repo -> live URL proven against a stubbed Render; **unverified against the real API** **[CRITICAL]**
 
 ---
 
@@ -90,12 +90,12 @@ Profile any public repo without credentials, no model call involved:
 ### Loop mechanics
 - [x] Diagnose step: failure signal + logs + repo profile -> hypothesis, with confidence and cited evidence; `unknown` escalates rather than guessing **[CRITICAL]**
 - [x] Fix step: `planFix` turns a `ProposedFix` into before/after content plus a unified diff, and refuses anything flagged `requiresHuman`
-- [ ] Re-verify step: redeploy, re-probe health **[CRITICAL]**
-- [ ] Fix budget (default 3) enforced, then escalate to human **[CRITICAL]**
-- [ ] `incidents` record: symptom, diagnosis, fix, outcome, attempt number
+- [x] Re-verify step: the loop redeploys and re-probes after every fix; success requires a passing health check **[CRITICAL]**
+- [x] Fix budget enforced in the loop via `budget.startFixAttempt()`, which throws; exhaustion escalates **[CRITICAL]**
+- [x] `incidents` recorded per attempt in `RunResult` (symptom, diagnosis, fix, outcome); **persistence to Postgres pending Docker**
 
 ### Repo mutation (guardrailed)
-- [ ] `github_create_branch()` — Harbor-managed branch, never the default branch **[CRITICAL]**
+- [~] `github_create_branch()` — the loop always commits to `harbor/auto-fix`, asserted by test; **the GitHub call itself needs a PAT** **[CRITICAL]**
 - [~] `github_commit_changes()` — the diff is generated and available to log before any commit; **the commit itself needs a GitHub PAT** **[CRITICAL]**
 
 ### Failure classes
@@ -141,7 +141,7 @@ Profile any public repo without credentials, no model call involved:
 ### Tests
 - [x] Unit tests for framework/port/dependency detection
 - [x] Recorded-fixture tests for diagnosis on real log output — `diagnose/fixtures.ts`
-- [ ] Integration test for the full loop against a stubbed provider
+- [x] Integration test for the full loop against a stubbed provider — `loop.test.ts` runs a failing-then-healing deployment with no network and no model
 - [x] Guardrail regression tests (injection, budget, redaction)
 
 ---
