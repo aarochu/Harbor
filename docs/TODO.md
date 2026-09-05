@@ -89,18 +89,18 @@ Profile any public repo without credentials, no model call involved:
 
 ### Loop mechanics
 - [x] Diagnose step: failure signal + logs + repo profile -> hypothesis, with confidence and cited evidence; `unknown` escalates rather than guessing **[CRITICAL]**
-- [~] Fix step: `ProposedFix` describes the change declaratively; **the applier that turns it into a diff is still to do**
+- [x] Fix step: `planFix` turns a `ProposedFix` into before/after content plus a unified diff, and refuses anything flagged `requiresHuman`
 - [ ] Re-verify step: redeploy, re-probe health **[CRITICAL]**
 - [ ] Fix budget (default 3) enforced, then escalate to human **[CRITICAL]**
 - [ ] `incidents` record: symptom, diagnosis, fix, outcome, attempt number
 
 ### Repo mutation (guardrailed)
 - [ ] `github_create_branch()` — Harbor-managed branch, never the default branch **[CRITICAL]**
-- [ ] `github_commit_changes()` — diff logged before commit, no force-push **[CRITICAL]**
+- [~] `github_commit_changes()` — the diff is generated and available to log before any commit; **the commit itself needs a GitHub PAT** **[CRITICAL]**
 
 ### Failure classes
-- [~] **A — Port mismatch:** detection done (green build + failed health + `bindsEnvPort: false`, bind site cited); **rebind + redeploy still to do** **[CRITICAL]**
-- [~] **B — Missing dependency:** parsing and package resolution done, including import->distribution aliases and stdlib exclusion; **manifest edit + commit + redeploy still to do** **[CRITICAL]**
+- [~] **A — Port mismatch:** detect + rebind done and proven by round trip (the patched repo re-profiles with `bindsEnvPort: true`); **redeploy still to do** **[CRITICAL]**
+- [~] **B — Missing dependency:** parse, resolve and manifest edit done for requirements.txt / pyproject / package.json, proven by round trip; **commit + redeploy still to do** **[CRITICAL]**
 - [x] **C — Missing env var:** detected from the crash log; sets a non-secret with a declared default, escalates anything secret-shaped **[STRETCH]**
 - [x] **D — Wrong start command:** detected from a missing executable or entry file; will not re-propose the command that just failed **[STRETCH]**
 - [ ] `rollback_deployment()` — revert to last healthy deploy **[STRETCH]**
