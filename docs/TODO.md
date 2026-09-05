@@ -88,8 +88,8 @@ Profile any public repo without credentials, no model call involved:
 ## M4 — Self-healing **[the differentiator]**
 
 ### Loop mechanics
-- [ ] Diagnose step: failure signal + logs + repo profile -> hypothesis **[CRITICAL]**
-- [ ] Fix step: apply a change, record what and why
+- [x] Diagnose step: failure signal + logs + repo profile -> hypothesis, with confidence and cited evidence; `unknown` escalates rather than guessing **[CRITICAL]**
+- [~] Fix step: `ProposedFix` describes the change declaratively; **the applier that turns it into a diff is still to do**
 - [ ] Re-verify step: redeploy, re-probe health **[CRITICAL]**
 - [ ] Fix budget (default 3) enforced, then escalate to human **[CRITICAL]**
 - [ ] `incidents` record: symptom, diagnosis, fix, outcome, attempt number
@@ -99,10 +99,10 @@ Profile any public repo without credentials, no model call involved:
 - [ ] `github_commit_changes()` — diff logged before commit, no force-push **[CRITICAL]**
 
 ### Failure classes
-- [ ] **A — Port mismatch:** detect health timeout, find the bound port, rebind to `$PORT`, redeploy **[CRITICAL]**
-- [ ] **B — Missing dependency:** parse build error, resolve package from imports, update manifest, commit, redeploy **[CRITICAL]**
-- [ ] **C — Missing env var:** detect from crash loop; set it, or escalate if it's a secret **[STRETCH]**
-- [ ] **D — Wrong start command:** detect instant exit, re-derive from framework conventions **[STRETCH]**
+- [~] **A — Port mismatch:** detection done (green build + failed health + `bindsEnvPort: false`, bind site cited); **rebind + redeploy still to do** **[CRITICAL]**
+- [~] **B — Missing dependency:** parsing and package resolution done, including import->distribution aliases and stdlib exclusion; **manifest edit + commit + redeploy still to do** **[CRITICAL]**
+- [x] **C — Missing env var:** detected from the crash log; sets a non-secret with a declared default, escalates anything secret-shaped **[STRETCH]**
+- [x] **D — Wrong start command:** detected from a missing executable or entry file; will not re-propose the command that just failed **[STRETCH]**
 - [ ] `rollback_deployment()` — revert to last healthy deploy **[STRETCH]**
 
 ---
@@ -140,7 +140,7 @@ Profile any public repo without credentials, no model call involved:
 
 ### Tests
 - [x] Unit tests for framework/port/dependency detection
-- [ ] Recorded-fixture tests for diagnosis on real log output
+- [x] Recorded-fixture tests for diagnosis on real log output — `diagnose/fixtures.ts`
 - [ ] Integration test for the full loop against a stubbed provider
 - [x] Guardrail regression tests (injection, budget, redaction)
 
