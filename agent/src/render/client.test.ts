@@ -268,6 +268,35 @@ void describe('RenderClient retry policy', () => {
   })
 })
 
+void describe('RenderClient triggerDeploy', () => {
+  void it('returns the newly created deploy', async () => {
+    const { client } = makeClient([{ status: 201, body: { id: 'dep-1', status: 'created' } }])
+    const deploy = await client.triggerDeploy('srv-1')
+    assert.equal(deploy.id, 'dep-1')
+  })
+
+  // Render's undocumented behaviour, and the bug that broke the first live run:
+  // a deploy already in flight gets 202 and an empty body, so there is nothing
+  // to poll unless the running deploy is looked up.
+  void it('adopts the in-flight deploy when Render answers 202 with no body', async () => {
+    const { client, calls } = makeClient([
+      { status: 202 },
+      { status: 200, body: [{ deploy: { id: 'dep-running', status: 'build_in_progress' } }] },
+    ])
+
+    const deploy = await client.triggerDeploy('srv-1')
+
+    assert.equal(deploy.id, 'dep-running')
+    assert.equal(deploy.status, 'build_in_progress')
+    assert.equal(calls[1]?.method, 'GET')
+  })
+
+  void it('fails loudly when nothing was created and nothing is running', async () => {
+    const { client } = makeClient([{ status: 202 }, { status: 200, body: [] }])
+    await assert.rejects(() => client.triggerDeploy('srv-1'), RenderApiError)
+  })
+})
+
 void describe('RenderClient service creation', () => {
   void it('disables autoDeploy so Harbor owns when a build happens', async () => {
     const { client, calls } = makeClient([

@@ -289,13 +289,39 @@ export class RenderClient {
   // Deploys
   // -------------------------------------------------------------------------
 
+  /**
+   * Start a deploy, or adopt the one already running.
+   *
+   * Render answers `201` with the new deploy normally, but `202` with an empty
+   * body when a deploy is already in flight: the request is accepted and no new
+   * deploy is created. That is undocumented, and returning the empty response
+   * would hand the caller `undefined` to poll — which is exactly how the first
+   * live run failed. The in-flight deploy is what the caller actually needs, so
+   * it is fetched and returned.
+   */
   async triggerDeploy(serviceId: string, options: { clearCache?: boolean } = {}): Promise<Deploy> {
-    return this.#request<Deploy>({
+    const created = await this.#request<Deploy | undefined>({
       method: 'POST',
       path: `/services/${encode(serviceId)}/deploys`,
       retryOnServerError: false,
       body: options.clearCache === true ? { clearCache: 'clear' } : {},
     })
+
+    if (created?.id !== undefined) return created
+
+    const [latest] = await this.listDeploys(serviceId, { limit: 1 })
+    if (latest?.id === undefined) {
+      throw new RenderApiError({
+        status: 202,
+        method: 'POST',
+        path: `/services/${serviceId}/deploys`,
+        body: '',
+        message:
+          `Render accepted the deploy request for ${serviceId} without returning a deploy, ` +
+          'and no existing deploy could be found to watch.',
+      })
+    }
+    return latest
   }
 
   async getDeploy(serviceId: string, deployId: string): Promise<Deploy> {
