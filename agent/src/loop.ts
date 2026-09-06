@@ -56,6 +56,14 @@ export interface DeployTarget {
   triggerDeploy: (serviceId: string) => Promise<Deploy>
   getDeploy: (serviceId: string, deployId: string) => Promise<Deploy>
   getService?: (serviceId: string) => Promise<Service>
+  /**
+   * Point the service at a different branch.
+   *
+   * Optional because a target that cannot switch branches is still usable for
+   * a clean deploy — but without it a fix committed to Harbor's branch is
+   * never built, and the loop would judge its own repair a failure.
+   */
+  updateServiceBranch?: (serviceId: string, branch: string) => Promise<Service>
   createPostgres: (input: CreatePostgresInput) => Promise<PostgresInstance>
   getPostgresConnectionInfo: (postgresId: string) => Promise<PostgresConnectionInfo>
 }
@@ -174,6 +182,11 @@ export interface LoopDeps {
   /** Cap on waiting for one deploy to reach a terminal state. */
   deployWaitMs?: number
   deployPollMs?: number
+  /**
+   * Branch Harbor commits fixes to. Give this a run-scoped name in production
+   * so a retry never has to force-push over an earlier run's branch.
+   */
+  fixBranch?: string
 }
 
 const HARBOR_BRANCH = 'harbor/auto-fix'
@@ -187,13 +200,17 @@ export async function runDeployment(input: RunInput, deps: LoopDeps): Promise<Ru
   const budget = deps.budget ?? new RunBudget()
   const advisor = deps.advisor ?? ruleBasedAdvisor
   const probe = deps.checkHealthImpl ?? checkHealth
+  const fixBranch = deps.fixBranch ?? HARBOR_BRANCH
 
   const incidents: Incident[] = []
   let issuesResolved = 0
   let profile: RepoProfile | undefined
   let service: Service | undefined
   let branch = input.branch ?? 'main'
-  let files: RepoFiles = deps.repo.files
+  // Deliberately empty until the clone lands. A real RepoSource exposes
+  // `files` as a getter that throws before a clone, so reading it here would
+  // fail the run on its first line.
+  let files: RepoFiles = new Map()
 
   bus.emit('run_started', `Deploying ${input.repoUrl}`, { repoUrl: input.repoUrl })
 
@@ -377,7 +394,7 @@ export async function runDeployment(input: RunInput, deps: LoopDeps): Promise<Ru
       // Always the Harbor branch, never `branch` — on the first fix that would
       // still be the repository's default branch, and Harbor must never commit
       // to it.
-      const applied = await applyFix(diagnosis, HARBOR_BRANCH, files, deps)
+      const applied = await applyFix(diagnosis, fixBranch, files, deps)
       if (applied === undefined) {
         incident.outcome = 'escalated'
         return escalate(
@@ -391,8 +408,18 @@ export async function runDeployment(input: RunInput, deps: LoopDeps): Promise<Ru
       incident.fixApplied = applied.summary
       incident.outcome = 'resolved'
       issuesResolved++
-      branch = HARBOR_BRANCH
+      branch = fixBranch
       files = applied.files
+
+      // The fix is on Harbor's branch; the service is still building whatever
+      // it was created with. Without this the redeploy rebuilds the unfixed
+      // code and the loop concludes its own repair did not work.
+      if (applied.diff !== '' && deps.target.updateServiceBranch !== undefined) {
+        const update = deps.target.updateServiceBranch.bind(deps.target)
+        await trackStep(bus, `Point service at ${fixBranch}`, async () => {
+          await update(serviceId, fixBranch)
+        })
+      }
 
       bus.emit('fix_applied', applied.summary, {
         attempt,

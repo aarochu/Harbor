@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "tsx --env-file-if-exists=.env src/agent.ts",
     "profile": "tsx src/repo/cli.ts",
+    "deploy": "tsx --env-file-if-exists=.env src/deploy.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "start": "node dist/agent.js",

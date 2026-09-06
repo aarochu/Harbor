@@ -226,6 +226,25 @@ export class RenderClient {
     }
   }
 
+  /**
+   * Point an existing service at a different branch.
+   *
+   * Needed for self-healing: Harbor commits its fix to its own branch and must
+   * never write to the default one, so after a fix the service has to be told
+   * to build the branch the fix is actually on. Without this the redeploy
+   * rebuilds the unfixed default branch, and the loop concludes its own repair
+   * did not work.
+   */
+  async updateServiceBranch(serviceId: string, branch: string): Promise<Service> {
+    return this.#request<Service>({
+      method: 'PATCH',
+      path: `/services/${encode(serviceId)}`,
+      body: { branch },
+      // Setting a field to a fixed value is idempotent.
+      retryOnServerError: true,
+    })
+  }
+
   // -------------------------------------------------------------------------
   // Environment variables
   // -------------------------------------------------------------------------

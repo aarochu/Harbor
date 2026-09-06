@@ -7,6 +7,7 @@ import { EventBus } from './events.js'
 import type { HealthResult } from './health.js'
 import { deriveServiceName, runDeployment } from './loop.js'
 import type { Advisor, DeployTarget, LoopDeps, RepoSource, RepoWriter } from './loop.js'
+import type { RepoFiles } from './repo/workspace.js'
 import { loadRepoFiles } from './repo/workspace.js'
 import type { Deploy, DeployStatus, Service } from './render/types.js'
 
@@ -59,10 +60,22 @@ function fakeTarget(options: { deployStatuses?: DeployStatus[] } = {}): DeployTa
 }
 
 async function fakeRepo(fixture: string): Promise<RepoSource> {
-  const files = await loadRepoFiles(join(FIXTURES, fixture))
+  const loaded = await loadRepoFiles(join(FIXTURES, fixture))
+  let opened = false
+
   return {
-    files,
-    open: () => Promise.resolve({ branch: 'main', commit: 'abc1234' }),
+    // Mirrors RepoSession, where `files` is a getter that throws before a
+    // clone. A stub that just exposes a plain property is more permissive than
+    // the real thing, and hid a bug where the loop read files on its first
+    // line — which failed instantly against a live repository.
+    get files(): RepoFiles {
+      if (!opened) throw new Error('No repository has been cloned yet')
+      return loaded
+    },
+    open: () => {
+      opened = true
+      return Promise.resolve({ branch: 'main', commit: 'abc1234' })
+    },
   }
 }
 
