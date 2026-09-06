@@ -19,10 +19,10 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 - [x] `lint` and `test` in both packages — ESLint + `node:test` (agent), ESLint + Vitest/RTL (web)
 
 ### Accounts & credentials
-- [ ] GitHub PAT with repo read/write on demo repos
-- [ ] Render account + API key, free-tier limits confirmed
-- [ ] Claude API access via Strands, quota confirmed — [aws-setup.md](aws-setup.md)
-- [~] Local Postgres — Docker compose target written; **blocked: Docker Desktop is not running**
+- [x] GitHub PAT in `agent/.env`, verified against `GET /user`
+- [x] Render account + API key verified; workspace `tea-dadgqsmkb8uc739ev0n0` in `RENDER_OWNER_ID`
+- [~] Claude API access via Strands — use case approved and the model is reachable; **blocked: AWS requires a payment instrument on the account before the Marketplace subscription for Anthropic models can complete** (credits do not substitute)
+- [x] Local Postgres via `docker compose up -d`
 
 ### Agent skeleton **[CRITICAL]**
 - [x] Strands SDK installed, TypeScript toolchain typechecks clean
@@ -38,7 +38,7 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 
 ### State store
 - [x] Schema: `deployments`, `plan_steps`, `tool_calls`, `incidents`, `activity_events`
-- [~] Migration runner written and idempotent; **blocked on a running Postgres** to apply against
+- [x] Migrations applied and repeatable from scratch — `activity_events`, `deployments`, `incidents`, `plan_steps`, `tool_calls`
 - [ ] Every tool call persisted with input, output, duration, outcome
 
 ---
