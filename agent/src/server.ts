@@ -17,11 +17,25 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { HarborEvent } from './events.js'
 import { MissingCredentialsError, createLiveRun } from './live.js'
 import { runDeployment } from './loop.js'
+import { PostgresRunStore, nullRunStore } from './db/store.js'
 import { RunRegistry } from './runs.js'
 import { HEARTBEAT_FRAME, formatEventFrame } from './sse.js'
 
 const PORT = Number(process.env.HARBOR_PORT ?? 4000)
-const registry = new RunRegistry()
+
+// Postgres when it is configured, forgetful when it is not. Harbor runs
+// without a database; it simply loses history on restart.
+const databaseUrl = process.env.DATABASE_URL
+const store = databaseUrl === undefined ? nullRunStore : new PostgresRunStore(databaseUrl)
+const registry = new RunRegistry({ store })
+
+/** What the operator is missing, phrased as something they can act on. */
+function credentialsProblem(): string | undefined {
+  const missing = (['RENDER_API_KEY', 'RENDER_OWNER_ID'] as const).filter(
+    (name) => !process.env[name],
+  )
+  return missing.length === 0 ? undefined : missing.join(' and ')
+}
 
 /** Dev-only. The server binds loopback and holds no cookies or sessions. */
 const CORS = {
@@ -102,7 +116,7 @@ function streamEvents(
 ): void {
   const bus = registry.bus(runId)
   if (bus === undefined) {
-    json(res, 404, { error: `No run ${runId}` })
+    void replayStored(res, runId, after)
     return
   }
 
@@ -140,6 +154,30 @@ function streamEvents(
   res.on('close', close)
 }
 
+/**
+ * Replay a run this process no longer holds in memory.
+ *
+ * The stream closes as soon as the history is written: there is nothing further
+ * to wait for, and leaving it open would make a finished run look live.
+ */
+async function replayStored(res: ServerResponse, runId: string, after: number): Promise<void> {
+  const events = await registry.replay(runId)
+  if (events.length === 0) {
+    json(res, 404, { error: `No run ${runId}` })
+    return
+  }
+
+  res.writeHead(200, {
+    'content-type': 'text/event-stream',
+    'cache-control': 'no-cache, no-transform',
+    ...CORS,
+  })
+  for (const event of events) {
+    if (event.seq > after) res.write(formatEventFrame(event))
+  }
+  res.end()
+}
+
 const server = createServer((req, res) => {
   void (async () => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`)
@@ -159,13 +197,33 @@ const server = createServer((req, res) => {
           json(res, 400, { error: 'repoUrl is required' })
           return
         }
+        const missing = credentialsProblem()
+        if (missing !== undefined) {
+          json(res, 503, {
+            error: `Harbor has no Render credentials. Set ${missing} in agent/.env and restart the server.`,
+          })
+          return
+        }
+
         const allowDatabase = (body as { allowDatabase?: unknown }).allowDatabase === true
         json(res, 202, { id: startRun(repoUrl.trim(), allowDatabase) })
         return
       }
 
       if (req.method === 'GET' && path === '/api/runs') {
-        json(res, 200, { runs: registry.list() })
+        json(res, 200, { runs: await registry.listAll() })
+        return
+      }
+
+      // Lets the UI say what is missing before the operator clicks anything,
+      // rather than after a failed start.
+      if (req.method === 'GET' && path === '/api/health') {
+        const missing = credentialsProblem()
+        json(res, 200, {
+          ready: missing === undefined,
+          ...(missing === undefined ? {} : { missing }),
+          persistence: databaseUrl === undefined ? 'memory' : 'postgres',
+        })
         return
       }
 
@@ -179,7 +237,7 @@ const server = createServer((req, res) => {
 
       const one = /^\/api\/runs\/([\w-]+)$/.exec(path)
       if (req.method === 'GET' && one?.[1] !== undefined) {
-        const summary = registry.summary(one[1])
+        const summary = await registry.summaryOrStored(one[1])
         if (summary === undefined) {
           json(res, 404, { error: `No run ${one[1]}` })
           return

@@ -188,6 +188,29 @@ export async function getRun(id: string): Promise<RunSummary | undefined> {
   return (await response.json()) as RunSummary;
 }
 
+export interface HarborHealth {
+  ready: boolean
+  /** Which credentials are absent, when they are. */
+  missing?: string
+  persistence: "memory" | "postgres"
+}
+
+/**
+ * Ask whether Harbor can actually deploy anything.
+ *
+ * Checked before the operator clicks rather than after, so a missing key reads
+ * as a setup step instead of a failed run.
+ */
+export async function getHealth(): Promise<HarborHealth | undefined> {
+  try {
+    const response = await fetch(`${API_BASE}/api/health`);
+    if (!response.ok) return undefined;
+    return (await response.json()) as HarborHealth;
+  } catch {
+    return undefined;
+  }
+}
+
 export function eventStreamUrl(runId: string, afterSeq: number): string {
   return `${API_BASE}/api/runs/${runId}/events?after=${String(afterSeq)}`;
 }

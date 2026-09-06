@@ -20,10 +20,12 @@ import {
   eventStreamUrl,
   formatClock,
   formatDuration,
+  getHealth,
   getRun,
   listRuns,
   startRun,
   type HarborEvent,
+  type HarborHealth,
   type Incident,
   type RunSummary,
   type Step,
@@ -43,6 +45,7 @@ export default function MissionControl() {
   const [connection, setConnection] = useState<Connection>("idle");
   const [error, setError] = useState<string | undefined>();
   const [starting, setStarting] = useState(false);
+  const [health, setHealth] = useState<HarborHealth | undefined>();
 
   const streamRef = useRef<HTMLDivElement | null>(null);
   const lastSeqRef = useRef(0);
@@ -53,7 +56,19 @@ export default function MissionControl() {
 
   useEffect(() => {
     refreshHistory();
+    void getHealth().then(setHealth);
   }, [refreshHistory]);
+
+  /** Open a finished run. The server replays it from the database. */
+  const openRun = useCallback((id: string) => {
+    lastSeqRef.current = 0;
+    setEvents([]);
+    setSummary(undefined);
+    setRunId(id);
+    void getRun(id).then((found) => {
+      if (found !== undefined) setSummary(found);
+    });
+  }, []);
 
   // Reconnects from the last sequence seen, so a dropped stream resumes rather
   // than replaying from zero or losing what happened while it was down.
@@ -94,8 +109,22 @@ export default function MissionControl() {
       source.onerror = () => {
         source?.close();
         if (closed) return;
-        setConnection("reconnecting");
-        retry = setTimeout(connect, 2000);
+
+        // EventSource cannot tell a dropped connection from a stream the server
+        // closed on purpose, and a finished run's replay always ends. Asking
+        // whether the run is still going is the difference between reconnecting
+        // and retrying a completed run every two seconds forever.
+        void getRun(runId).then((current) => {
+          if (closed) return;
+          if (current !== undefined) setSummary(current);
+
+          if (current !== undefined && current.status !== "running") {
+            setConnection("idle");
+            return;
+          }
+          setConnection("reconnecting");
+          retry = setTimeout(connect, 2000);
+        });
       };
     };
 
@@ -146,6 +175,8 @@ export default function MissionControl() {
         </p>
       </header>
 
+      {health !== undefined && !health.ready && <SetupNotice health={health} />}
+
       <form onSubmit={onStart} className="mb-8">
         <label htmlFor="repo" className="mb-2 block text-sm font-medium">
           Repository
@@ -165,7 +196,7 @@ export default function MissionControl() {
           />
           <button
             type="submit"
-            disabled={starting}
+            disabled={starting || health?.ready === false}
             className="min-h-11 cursor-pointer rounded-md bg-primary px-5 text-sm font-semibold text-on-primary transition-opacity duration-200 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {starting ? "Starting" : "Start operation"}
@@ -192,8 +223,36 @@ export default function MissionControl() {
         <ActivityStream events={events} connection={connection} scrollRef={streamRef} />
       </div>
 
-      <HistoryList runs={history} />
+      <HistoryList runs={history} onOpen={openRun} openId={runId} />
     </main>
+  );
+}
+
+/**
+ * What is missing, and what to do about it.
+ *
+ * A missing credential is a setup step, not a failure, so it is stated before
+ * the operator clicks rather than surfaced as an error after a run refuses to
+ * start. The page never offers to collect the key: a secret typed into a form
+ * travels through the browser, sits in component state, and lands in devtools,
+ * which is exactly what reading it from the environment avoids.
+ */
+function SetupNotice({ health }: { health: HarborHealth }) {
+  return (
+    <section
+      role="status"
+      className="mb-6 rounded-md border border-pending bg-pending/10 px-4 py-4 text-sm"
+    >
+      <p className="font-medium text-pending">Harbor has no Render credentials</p>
+      <p className="mt-1">
+        Set <code className="font-mono text-xs">{health.missing ?? "the required variables"}</code>{" "}
+        in <code className="font-mono text-xs">agent/.env</code>, then restart the server with{" "}
+        <code className="font-mono text-xs">npm run serve</code>.
+      </p>
+      <p className="mt-2 text-muted-foreground">
+        Credentials are read from the environment. Harbor never accepts them through this page.
+      </p>
+    </section>
   );
 }
 
@@ -469,7 +528,15 @@ function toneFor(type: HarborEvent["type"]): string {
 
 /* --------------------------------------------------------------- history -- */
 
-function HistoryList({ runs }: { runs: readonly RunSummary[] }) {
+function HistoryList({
+  runs,
+  onOpen,
+  openId,
+}: {
+  runs: readonly RunSummary[];
+  onOpen: (id: string) => void;
+  openId: string | undefined;
+}) {
   if (runs.length === 0) return null;
 
   return (
@@ -479,18 +546,28 @@ function HistoryList({ runs }: { runs: readonly RunSummary[] }) {
       </h2>
       <ul className="flex flex-col gap-2">
         {runs.map((run) => (
-          <li
-            key={run.id}
-            className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm"
-          >
-            <StatusDot status={run.status} />
-            <span className="truncate font-mono text-xs">{run.repoUrl}</span>
-            <span className="ml-auto font-mono text-xs text-muted-foreground">
-              {formatClock(run.startedAt)}
-            </span>
-            {run.issuesResolved > 0 && (
-              <span className="font-mono text-xs text-primary">{run.issuesResolved} fixed</span>
-            )}
+          <li key={run.id}>
+            {/* Opening a past run is navigation, not orchestration: it replays
+                what already happened and cannot change it. */}
+            <button
+              type="button"
+              onClick={() => {
+                onOpen(run.id);
+              }}
+              aria-current={run.id === openId ? "true" : undefined}
+              className={`flex min-h-11 w-full cursor-pointer flex-wrap items-center gap-3 rounded-md border bg-card px-4 py-3 text-left text-sm transition-colors duration-200 hover:border-muted-foreground ${
+                run.id === openId ? "border-primary" : "border-border"
+              }`}
+            >
+              <StatusDot status={run.status} />
+              <span className="truncate font-mono text-xs">{run.repoUrl}</span>
+              <span className="ml-auto font-mono text-xs text-muted-foreground">
+                {formatClock(run.startedAt)}
+              </span>
+              {run.issuesResolved > 0 && (
+                <span className="font-mono text-xs text-primary">{run.issuesResolved} fixed</span>
+              )}
+            </button>
           </li>
         ))}
       </ul>

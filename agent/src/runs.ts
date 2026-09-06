@@ -10,6 +10,8 @@
  * client resumes from, so moving this to Postgres later changes where the
  * history lives without changing how it is read.
  */
+import type { RunStore } from './db/store.js'
+import { nullRunStore } from './db/store.js'
 import { EventBus } from './events.js'
 import type { HarborEvent } from './events.js'
 import type { RunResult } from './loop.js'
@@ -43,14 +45,44 @@ export interface RunSummary {
 interface Entry {
   record: RunRecord
   bus: EventBus
+  /**
+   * Serialises this run's database writes.
+   *
+   * activity_events has a foreign key to deployments, so an event written
+   * before the run row exists is rejected. Firing both without ordering lost
+   * the first events of every run to a constraint violation that was logged and
+   * swallowed — the history looked complete until someone counted it.
+   */
+  writes: Promise<void>
 }
 
 export class RunRegistry {
   readonly #runs = new Map<string, Entry>()
   readonly #limit: number
+  readonly #store: RunStore
 
-  constructor(options: { limit?: number } = {}) {
+  constructor(options: { limit?: number; store?: RunStore } = {}) {
     this.#limit = options.limit ?? 50
+    this.#store = options.store ?? nullRunStore
+  }
+
+  /**
+   * Persistence must not be able to fail a deployment.
+   *
+   * A run that succeeded but could not be written down is still a run that
+   * succeeded, so a store error is reported and dropped rather than thrown into
+   * the loop that was mid-deploy.
+   */
+  #persist(entry: Entry, what: string, write: () => Promise<void>): void {
+    entry.writes = entry.writes.then(write).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[harbor] could not persist ${what}: ${message}`)
+    })
+  }
+
+  /** Wait for a run's queued writes. Tests and shutdown need this; the loop does not. */
+  async flush(id: string): Promise<void> {
+    await this.#runs.get(id)?.writes
   }
 
   /**
@@ -70,7 +102,17 @@ export class RunRegistry {
       startedAt: new Date().toISOString(),
     }
     const bus = new EventBus(id)
-    this.#runs.set(id, { record, bus })
+    const entry: Entry = { record, bus, writes: Promise.resolve() }
+    this.#runs.set(id, entry)
+
+    // Queued in this order and never overlapping, so the run row is committed
+    // before the first event that references it.
+    this.#persist(entry, `run ${id}`, () => this.#store.saveRun(record))
+    bus.subscribe((event) => {
+      this.#persist(entry, `event ${id}#${String(event.seq)}`, () =>
+        this.#store.saveEvent(id, event),
+      )
+    })
 
     // Oldest first, and never evict something still running.
     while (this.#runs.size > this.#limit) {
@@ -88,6 +130,7 @@ export class RunRegistry {
     entry.record.status = result.status
     entry.record.result = result
     entry.record.endedAt = new Date().toISOString()
+    this.#persist(entry, `run ${id}`, () => this.#store.updateRun(entry.record))
   }
 
   fail(id: string, error: string): void {
@@ -96,6 +139,7 @@ export class RunRegistry {
     entry.record.status = 'failed'
     entry.record.error = error
     entry.record.endedAt = new Date().toISOString()
+    this.#persist(entry, `run ${id}`, () => this.#store.updateRun(entry.record))
   }
 
   get(id: string): RunRecord | undefined {
@@ -121,6 +165,37 @@ export class RunRegistry {
     return [...this.#runs.values()]
       .map(toSummary)
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+  }
+
+  /**
+   * History across restarts.
+   *
+   * In-memory runs win on id: a live run's status is current, while the stored
+   * row for it is whatever was last written and may say `running` for something
+   * that finished a moment ago.
+   */
+  async listAll(limit = 50): Promise<RunSummary[]> {
+    const live = this.list()
+    const stored = await this.#store.listRuns(limit).catch(() => [])
+    const seen = new Set(live.map((run) => run.id))
+
+    return [...live, ...stored.filter((run) => !seen.has(run.id))]
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+      .slice(0, limit)
+  }
+
+  /** Events for a run this process no longer holds. */
+  async replay(id: string): Promise<HarborEvent[]> {
+    const bus = this.#runs.get(id)?.bus
+    if (bus !== undefined) return [...bus.history]
+    return this.#store.loadEvents(id).catch(() => [])
+  }
+
+  async summaryOrStored(id: string): Promise<RunSummary | undefined> {
+    const live = this.summary(id)
+    if (live !== undefined) return live
+    const stored = await this.#store.listRuns(200).catch(() => [])
+    return stored.find((run) => run.id === id)
   }
 
   get size(): number {

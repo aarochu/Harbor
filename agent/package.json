@@ -11,7 +11,7 @@
     "build": "tsc",
     "start": "node dist/agent.js",
     "lint": "eslint src",
-    "test": "node --import tsx --test src/**/*.test.ts",
+    "test": "node --env-file-if-exists=.env --import tsx --test src/**/*.test.ts",
     "db:migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts"
   },
   "keywords": [],

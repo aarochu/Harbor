@@ -39,7 +39,7 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 ### State store
 - [x] Schema: `deployments`, `plan_steps`, `tool_calls`, `incidents`, `activity_events`
 - [x] Migrations applied and repeatable from scratch — `activity_events`, `deployments`, `incidents`, `plan_steps`, `tool_calls`
-- [~] Every tool call emitted as an event with input, output, duration, outcome; **writing them to Postgres still to do**
+- [x] Every tool call emitted as an event with input, output, duration, outcome, and persisted to `activity_events`
 
 ---
 
@@ -114,9 +114,9 @@ Profile any public repo without credentials, no model call involved:
 - [x] Current-operation step list: label, per-step duration, pass/fail **[CRITICAL]**
 - [x] Live activity stream over SSE, timestamped, auto-scrolling **[CRITICAL]**
 - [x] Terminal state: Succeeded / Escalated / Failed, plus "Harbor automatically resolved N issues" **[CRITICAL]**
-- [~] Deployment history list rendered from `GET /api/runs`; **drill-in to a past run still to do**
+- [x] Deployment history list with drill-in — a finished run replays from Postgres
 - [x] Escalation renders as "Needs a decision from you", not a chat bubble
-- [x] Reconnect handling — SSE `id` is the event `seq`; the client resumes with `?after=` **[in-memory; Postgres persistence still to do]**
+- [x] Reconnect handling — SSE `id` is the event `seq`; the client resumes with `?after=`, and a finished run's closed stream is not mistaken for a drop
 - [x] Nothing in the UI orchestrates the agent; it only observes — asserted by test (exactly one button, no pause/cancel/approve/retry) **[CRITICAL]**
 
 ---

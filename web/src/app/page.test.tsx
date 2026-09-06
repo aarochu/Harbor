@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deriveIncidents, deriveSteps, formatDuration, type HarborEvent } from "@/lib/harbor";
 import MissionControl from "./page";
@@ -14,16 +14,43 @@ function event(
   };
 }
 
-beforeEach(() => {
-  // The page lists prior runs on mount; nothing here exercises the network.
+/** Answers the two calls the page makes on mount. Nothing hits the network. */
+function stubServer(options: { runs?: unknown[]; health?: unknown } = {}) {
+  const health = options.health ?? { ready: true, persistence: "postgres" };
   vi.stubGlobal(
     "fetch",
-    vi.fn(() => Promise.resolve(new Response(JSON.stringify({ runs: [] })))),
+    vi.fn((input: string) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(input.includes("/api/health") ? health : { runs: options.runs ?? [] }),
+        ),
+      ),
+    ),
   );
-  vi.stubGlobal(
-    "EventSource",
-    vi.fn(() => ({ close: vi.fn() })),
-  );
+}
+
+/** Every stream URL the page opened, so a test can assert what it subscribed to. */
+const opened: string[] = [];
+
+/** EventSource is constructed with `new`, so the stub has to be a class. */
+class FakeEventSource {
+  onopen: (() => void) | null = null;
+  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  constructor(url: string) {
+    opened.push(url);
+  }
+
+  close(): void {
+    // Nothing to tear down.
+  }
+}
+
+beforeEach(() => {
+  opened.length = 0;
+  stubServer();
+  vi.stubGlobal("EventSource", FakeEventSource);
 });
 
 describe("mission control", () => {
@@ -43,19 +70,96 @@ describe("mission control", () => {
   });
 
   // SOW §4: the UI observes and never orchestrates. Any control that resumes,
-  // approves, or cancels a run belongs to the agent, not to a viewer.
+  // approves, or cancels a run belongs to the agent, not to a viewer. Opening a
+  // past run is navigation and does not count.
   it("offers no control that steers a run", () => {
     render(<MissionControl />);
 
-    expect(screen.getAllByRole("button")).toHaveLength(1);
-    for (const label of [/pause/i, /cancel/i, /approve/i, /retry/i, /stop/i]) {
+    for (const label of [/pause/i, /cancel/i, /approve/i, /retry/i, /stop/i, /rollback/i]) {
       expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    }
+  });
+
+  // A secret typed into a form travels through the browser, sits in component
+  // state, and lands in devtools. Harbor reads credentials from the environment
+  // precisely so none of that happens.
+  it("never asks for a credential", () => {
+    render(<MissionControl />);
+
+    const fields = screen.getAllByRole("textbox");
+    expect(fields).toHaveLength(1);
+    expect(document.querySelector('input[type="password"]')).toBeNull();
+    for (const label of [/api key/i, /token/i, /secret/i, /password/i]) {
+      expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
     }
   });
 
   it("says plainly that nothing has happened yet", () => {
     render(<MissionControl />);
     expect(screen.getByText(/start an operation to watch it run/i)).toBeInTheDocument();
+  });
+});
+
+describe("when the server has no credentials", () => {
+  beforeEach(() => {
+    stubServer({
+      health: { ready: false, missing: "RENDER_API_KEY and RENDER_OWNER_ID", persistence: "memory" },
+    });
+  });
+
+  it("names what is missing and where to put it", async () => {
+    render(<MissionControl />);
+
+    expect(await screen.findByText(/harbor has no render credentials/i)).toBeInTheDocument();
+    expect(screen.getByText(/RENDER_API_KEY and RENDER_OWNER_ID/)).toBeInTheDocument();
+    expect(screen.getByText(/agent\/\.env/)).toBeInTheDocument();
+  });
+
+  it("says the page will not take the credential itself", async () => {
+    render(<MissionControl />);
+    expect(await screen.findByText(/never accepts them through this page/i)).toBeInTheDocument();
+  });
+
+  it("disables starting, rather than failing after the click", async () => {
+    render(<MissionControl />);
+
+    await screen.findByText(/harbor has no render credentials/i);
+    expect(screen.getByRole("button", { name: /start operation/i })).toBeDisabled();
+  });
+});
+
+describe("history", () => {
+  const run = {
+    id: "run-1",
+    repoUrl: "https://github.com/aarochu/harbor-demo-missing-dep",
+    status: "succeeded",
+    startedAt: "2026-09-06T12:00:00.000Z",
+    issuesResolved: 1,
+    lastSeq: 23,
+  };
+
+  beforeEach(() => {
+    stubServer({ runs: [run] });
+  });
+
+  it("lists a past run with what it repaired", async () => {
+    render(<MissionControl />);
+
+    expect(await screen.findByText(/harbor-demo-missing-dep/)).toBeInTheDocument();
+    expect(screen.getByText(/1 fixed/)).toBeInTheDocument();
+  });
+
+  // The gap the first live run exposed: a finished run could be seen in the
+  // list but never opened again.
+  it("can be opened to replay the run", async () => {
+    render(<MissionControl />);
+
+    const row = await screen.findByRole("button", { name: /harbor-demo-missing-dep/ });
+    fireEvent.click(row);
+
+    await waitFor(() => {
+      expect(opened.some((url) => url.includes("/api/runs/run-1/events"))).toBe(true);
+    });
   });
 });
 

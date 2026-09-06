@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { nullRunStore } from './db/store.js'
+import type { HarborEvent } from './events.js'
 import type { RunResult } from './loop.js'
 import { RunRegistry } from './runs.js'
 
@@ -112,6 +114,47 @@ void describe('RunRegistry', () => {
     assert.ok(registry.get('a'), 'the running run must survive')
     assert.ok(registry.get('c'))
     assert.equal(registry.get('b'), undefined, 'the finished run is the one evicted')
+  })
+
+  // The bug this guards: activity_events has a foreign key to deployments, and
+  // firing both writes without ordering meant the first events of every run
+  // were rejected by the constraint, logged, and swallowed. The history looked
+  // complete until someone counted it.
+  void it('writes the run row before any event that references it', async () => {
+    const order: string[] = []
+    const slowStore = {
+      ...nullRunStore,
+      saveRun: async () => {
+        // A real INSERT is not instantaneous; without ordering the events win.
+        await new Promise((done) => setTimeout(done, 10))
+        order.push('run')
+      },
+      saveEvent: (_id: string, event: HarborEvent) => {
+        order.push(`event-${String(event.seq)}`)
+        return Promise.resolve()
+      },
+    }
+
+    const registry = new RunRegistry({ store: slowStore })
+    const { bus } = registry.start('run-1', 'https://github.com/a/b')
+    bus.emit('run_started', 'one')
+    bus.emit('step_started', 'two')
+
+    await registry.flush('run-1')
+    assert.deepEqual(order, ['run', 'event-1', 'event-2'])
+  })
+
+  void it('reports a store failure without failing the run', async () => {
+    const registry = new RunRegistry({
+      store: { ...nullRunStore, saveRun: () => Promise.reject(new Error('database is down')) },
+    })
+
+    const { bus } = registry.start('run-1', 'https://github.com/a/b')
+    bus.emit('run_started', 'still fine')
+
+    // The write rejected; the run is unaffected and flush resolves.
+    await registry.flush('run-1')
+    assert.equal(registry.summary('run-1')?.status, 'running')
   })
 
   void it('keeps everything when nothing has finished', () => {
