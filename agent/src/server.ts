@@ -18,6 +18,7 @@ import type { HarborEvent } from './events.js'
 import { MissingCredentialsError, createLiveRun } from './live.js'
 import { runDeployment } from './loop.js'
 import { RunRegistry } from './runs.js'
+import { HEARTBEAT_FRAME, formatEventFrame } from './sse.js'
 
 const PORT = Number(process.env.HARBOR_PORT ?? 4000)
 const registry = new RunRegistry()
@@ -114,7 +115,7 @@ function streamEvents(
   })
 
   const send = (event: HarborEvent): void => {
-    res.write(`id: ${String(event.seq)}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+    res.write(formatEventFrame(event))
   }
 
   let live = false
@@ -129,8 +130,7 @@ function streamEvents(
   for (const event of pending) if (event.seq > after) send(event)
   live = true
 
-  // Comment frames keep intermediaries from closing an idle stream.
-  const heartbeat = setInterval(() => res.write(': keep-alive\n\n'), 15_000)
+  const heartbeat = setInterval(() => res.write(HEARTBEAT_FRAME), 15_000)
 
   const close = (): void => {
     clearInterval(heartbeat)
