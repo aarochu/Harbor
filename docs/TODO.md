@@ -39,7 +39,7 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 ### State store
 - [x] Schema: `deployments`, `plan_steps`, `tool_calls`, `incidents`, `activity_events`
 - [x] Migrations applied and repeatable from scratch — `activity_events`, `deployments`, `incidents`, `plan_steps`, `tool_calls`
-- [ ] Every tool call persisted with input, output, duration, outcome
+- [~] Every tool call emitted as an event with input, output, duration, outcome; **writing them to Postgres still to do**
 
 ---
 
@@ -109,15 +109,15 @@ Profile any public repo without credentials, no model call involved:
 
 ## M5 — Mission control UI
 
-- [ ] Single input: GitHub URL + START OPERATION **[CRITICAL]**
-- [ ] Service card: status dot, name, environment, URL, last-deploy time
-- [ ] Current-operation step list: label, per-step duration, pass/fail **[CRITICAL]**
-- [ ] Live activity stream over SSE, timestamped, auto-scrolling **[CRITICAL]**
-- [ ] Terminal state: SUCCESS / ESCALATED, plus "Harbor automatically resolved N issues" **[CRITICAL]**
-- [ ] Deployment history list with drill-in
-- [ ] `notify_user()` renders as an explicit escalation prompt, not a chat bubble
-- [ ] Reconnect handling — a dropped stream resumes from persisted events
-- [ ] Nothing in the UI orchestrates the agent; it only observes **[CRITICAL]**
+- [x] Single input: GitHub URL + Start operation **[CRITICAL]**
+- [x] Service card: status dot, repository, URL, start time
+- [x] Current-operation step list: label, per-step duration, pass/fail **[CRITICAL]**
+- [x] Live activity stream over SSE, timestamped, auto-scrolling **[CRITICAL]**
+- [x] Terminal state: Succeeded / Escalated / Failed, plus "Harbor automatically resolved N issues" **[CRITICAL]**
+- [~] Deployment history list rendered from `GET /api/runs`; **drill-in to a past run still to do**
+- [x] Escalation renders as "Needs a decision from you", not a chat bubble
+- [x] Reconnect handling — SSE `id` is the event `seq`; the client resumes with `?after=` **[in-memory; Postgres persistence still to do]**
+- [x] Nothing in the UI orchestrates the agent; it only observes — asserted by test (exactly one button, no pause/cancel/approve/retry) **[CRITICAL]**
 
 ---
 
