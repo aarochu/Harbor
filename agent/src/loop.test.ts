@@ -165,7 +165,7 @@ void describe('runDeployment — happy path', () => {
     )
 
     const types = bus.history.map((event) => event.type)
-    const healthStep = bus.history.findIndex((event) => event.message === 'Health check')
+    const healthStep = bus.history.findIndex((event) => event.message.startsWith('Health check'))
     assert.ok(healthStep >= 0, 'a health check must have run')
     assert.ok(types.indexOf('run_succeeded') > healthStep)
   })

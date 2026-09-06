@@ -166,6 +166,15 @@ export interface RunInput {
   /** Render workspace id. */
   ownerId: string
   serviceName?: string
+  /**
+   * Path the health probe requests.
+   *
+   * Must match a route the application actually serves. Probing the site root
+   * looks reasonable and is wrong for any service that does not define one:
+   * the root 404s, the probe reads that as unreachable, and Harbor diagnoses a
+   * dead service that is in fact answering perfectly on its real route.
+   */
+  healthCheckPath?: string
 }
 
 export interface LoopDeps {
@@ -190,6 +199,7 @@ export interface LoopDeps {
 }
 
 const HARBOR_BRANCH = 'harbor/auto-fix'
+const DEFAULT_HEALTH_PATH = '/health'
 
 // ---------------------------------------------------------------------------
 // The loop
@@ -201,6 +211,7 @@ export async function runDeployment(input: RunInput, deps: LoopDeps): Promise<Ru
   const advisor = deps.advisor ?? ruleBasedAdvisor
   const probe = deps.checkHealthImpl ?? checkHealth
   const fixBranch = deps.fixBranch ?? HARBOR_BRANCH
+  const healthCheckPath = input.healthCheckPath ?? DEFAULT_HEALTH_PATH
 
   const incidents: Incident[] = []
   let issuesResolved = 0
@@ -314,7 +325,7 @@ export async function runDeployment(input: RunInput, deps: LoopDeps): Promise<Ru
         runtime: runtimeFor(profile?.detection.runtime ?? 'unknown'),
         buildCommand,
         startCommand,
-        healthCheckPath: '/health',
+        healthCheckPath,
       }),
     )
     service = created.service
@@ -335,7 +346,13 @@ export async function runDeployment(input: RunInput, deps: LoopDeps): Promise<Ru
       budget.startTurn()
 
       const outcome = await deployAndVerify(
-        { serviceId, profile, probe, ...(deps.sleepImpl && { sleepImpl: deps.sleepImpl }) },
+        {
+          serviceId,
+          profile,
+          probe,
+          healthCheckPath,
+          ...(deps.sleepImpl && { sleepImpl: deps.sleepImpl }),
+        },
         deps,
       )
 
@@ -464,6 +481,7 @@ async function deployAndVerify(
     serviceId: string
     profile: RepoProfile
     probe: typeof checkHealth
+    healthCheckPath: string
     sleepImpl?: (ms: number) => Promise<void>
   },
   deps: LoopDeps,
@@ -507,8 +525,14 @@ async function deployAndVerify(
     return { kind: 'indeterminate', reason: 'The service has no public URL to probe yet.' }
   }
 
-  const health = await trackStep(bus, 'Health check', async () =>
-    context.probe(url, context.sleepImpl === undefined ? {} : { sleepImpl: context.sleepImpl }),
+  // Probe the route the application serves, not the site root.
+  const probeUrl = `${url.replace(/\/+$/, '')}${context.healthCheckPath}`
+
+  const health = await trackStep(bus, `Health check ${context.healthCheckPath}`, async () =>
+    context.probe(
+      probeUrl,
+      context.sleepImpl === undefined ? {} : { sleepImpl: context.sleepImpl },
+    ),
   )
 
   if (health.status === 'healthy') return { kind: 'healthy', url, health }
