@@ -115,3 +115,59 @@ tool on its own. That is M0's last open item.
 path first. It bills Anthropic directly rather than drawing down the AWS credits,
 which is the whole reason Bedrock is the default — but it unblocks development
 immediately, and the two paths are interchangeable at runtime.
+
+## Cost guardrails
+
+Harbor's model calls are the only metered cost in the project, and the whole
+premise is that they come out of a $100 credit balance rather than a card. Two
+budgets make that verifiable instead of assumed.
+
+Neither can be created from Harbor's own credentials: the `harbor` IAM user
+holds only `HarborBedrockInvoke`, and granting it `budgets:*` would widen a
+deploy agent's key to cover billing. Create them in the console instead.
+
+**Billing console → Budgets → Create budget** (account `318432260537`).
+
+### 1. Zero-spend alert — "did real money start moving?"
+
+Use the **Zero spend budget** template. It creates a $0.01 monthly cost budget
+and emails you the moment actual charges exceed it.
+
+By default a budget counts credits as payment, so this stays silent for as long
+as the $100 covers usage and fires on the first cent that does not. That is
+exactly the signal worth having: not "Harbor is spending", but "the credits ran
+out and this is now costing money".
+
+### 2. Credit burn warning — "how much of the $100 is left?"
+
+The zero-spend alert only fires *after* the credits are gone, which is late. A
+second budget gives you warning:
+
+- Budget type: **Cost budget**, monthly
+- Amount: **80 USD**
+- Under *Advanced options*, **uncheck "Credits"** so the budget measures gross
+  usage rather than what you were charged
+- Alert at **80% of actual**
+
+That fires at roughly $64 of the $100 consumed — enough runway to decide whether
+to keep going before anything is at stake.
+
+### Why not do this from the CLI
+
+If you would rather script it, the account needs `budgets:CreateBudget`, and the
+call is:
+
+```bash
+aws budgets create-budget --account-id 318432260537 --profile <admin-profile> \
+  --budget '{"BudgetName":"harbor-zero-spend","BudgetLimit":{"Amount":"0.01","Unit":"USD"},"TimeUnit":"MONTHLY","BudgetType":"COST"}' \
+  --notifications-with-subscribers '[{"Notification":{"NotificationType":"ACTUAL","ComparisonOperator":"GREATER_THAN","Threshold":0.01,"ThresholdType":"ABSOLUTE_VALUE"},"Subscribers":[{"SubscriptionType":"EMAIL","Address":"YOUR_EMAIL"}]}]'
+```
+
+Run it as an admin principal, not as `harbor`.
+
+### Harbor's own ceiling
+
+These are AWS-side backstops. Harbor caps itself independently — `RunBudget`
+enforces a per-run turn cap, wall-clock cap, fix budget and a soft cost ceiling,
+and `HARBOR_MAX_TOKENS` bounds every model response. The AWS budgets exist to
+catch the case where that reasoning is wrong.
