@@ -55,7 +55,7 @@ Milestone definitions and acceptance criteria live in [SOW.md](SOW.md).
 - [x] Port detection — literal, `os.environ`/`process.env`, framework default; `bindsEnvPort` is the class A signal **[CRITICAL]**
 - [x] Database detection — driver deps + connection-string schemes; sqlite/redis alone do not trigger a paid provision
 - [x] Emit a single structured `RepoProfile` the agent reasons over — every finding carries file/line evidence
-- [x] Verified: all three demo repos profile correctly with zero hints — fixtures in `agent/fixtures/`, asserted in `repo/profile.test.ts` **[CRITICAL]**
+- [x] Verified: all three demo repos profile correctly with zero hints — asserted offline in `repo/profile.test.ts`, and confirmed against the live GitHub URLs **[CRITICAL]**
 
 Profile any public repo without credentials, no model call involved:
 `cd agent && npm run profile -- https://github.com/owner/repo`
@@ -149,10 +149,10 @@ Profile any public repo without credentials, no model call involved:
 ## M7 — Demo & submission
 
 ### Demo repos **[CRITICAL]**
-- [~] `harbor-demo-clean` — FastAPI + Postgres, deploys green; source written at `agent/fixtures/harbor-demo-clean`, **not yet pushed as a repo**
-- [~] `harbor-demo-missing-dep` — imports `httpx`, absent from the manifest; source written, **not yet pushed as a repo**
-- [~] `harbor-demo-port-mismatch` — app binds `8000`, platform expects `$PORT`; source written, **not yet pushed as a repo**
-- [ ] Each verified to fail in exactly the intended way, repeatably
+- [x] [`harbor-demo-clean`](https://github.com/aarochu/harbor-demo-clean) — FastAPI + Postgres, profiles clean with zero warnings
+- [x] [`harbor-demo-missing-dep`](https://github.com/aarochu/harbor-demo-missing-dep) — imports `httpx`, absent from the manifest; invisible to static profiling by design
+- [x] [`harbor-demo-port-mismatch`](https://github.com/aarochu/harbor-demo-port-mismatch) — binds `8000`; detected as `source: literal`, cited at `main.py:14`
+- [~] Each profiles as intended from its live URL (`npm run profile`); **failing in the intended way needs a real deploy**
 
 ### Video (5:00) **[CRITICAL]**
 - [ ] 0:00–0:30 the manual loop, shown as pain
