@@ -70,17 +70,17 @@ Profile any public repo without credentials, no model call involved:
 - [x] `set_environment_variable()` — `setEnvVar` returns `void` by design; uses the single-key endpoint because the bulk `PUT` deletes omitted vars **[CRITICAL]**
 - [x] `get_deployment_status()` — `waitForDeploy` polls to terminal state; `timed_out` is a third outcome, never reported as failure
 - [ ] `run_build()` / `run_tests()` — sandboxed, capped, streaming output
-- [~] End-to-end: clean repo -> live URL proven against a stubbed Render; **unverified against the real API** **[CRITICAL]**
+- [x] End-to-end: repo URL -> live URL, unattended, verified against real Render **[CRITICAL]**
 
 ---
 
 ## M3 — Observation
 
-- [ ] `get_deployment_logs()` — build logs, tail-bounded **[CRITICAL]**
-- [ ] `get_runtime_logs()` — runtime/crash logs **[CRITICAL]**
-- [ ] `check_health()` — HTTP probe with timeout, retries, status + latency **[CRITICAL]**
-- [ ] Log summarization before the model sees it (token budget guard)
-- [ ] A failed deployment is surfaced as a failure — never silently passed **[CRITICAL]**
+- [x] `get_deployment_logs()` — `RenderClient.getLogs`, build stream, tailed to 120 lines **[CRITICAL]**
+- [x] `get_runtime_logs()` — the `app` stream; where `ModuleNotFoundError` actually appears, not the build stream **[CRITICAL]**
+- [x] `check_health()` — probes the service's health path, not the site root **[CRITICAL]**
+- [x] Log tail-bounding before diagnosis — the explanation is at the end, the start is install noise
+- [x] A failed deployment is surfaced as a failure — never silently passed **[CRITICAL]**
 - [x] Redaction filter on every log path, applied before persistence and before model context **[CRITICAL]**
 
 ---
@@ -95,12 +95,12 @@ Profile any public repo without credentials, no model call involved:
 - [x] `incidents` recorded per attempt in `RunResult` (symptom, diagnosis, fix, outcome); **persistence to Postgres pending Docker**
 
 ### Repo mutation (guardrailed)
-- [~] `github_create_branch()` — the loop always commits to `harbor/auto-fix`, asserted by test; **the GitHub call itself needs a PAT** **[CRITICAL]**
-- [~] `github_commit_changes()` — the diff is generated and available to log before any commit; **the commit itself needs a GitHub PAT** **[CRITICAL]**
+- [x] `github_create_branch()` — run-scoped `harbor/fix-<runId>`; refuses the repo's default branch, checked against the remote's own HEAD **[CRITICAL]**
+- [x] `github_commit_changes()` — `GitWriter` commits in the clone, diff logged first, never force-pushes **[CRITICAL]**
 
 ### Failure classes
 - [~] **A — Port mismatch:** detect + rebind done and proven by round trip (the patched repo re-profiles with `bindsEnvPort: true`); **redeploy still to do** **[CRITICAL]**
-- [~] **B — Missing dependency:** parse, resolve and manifest edit done for requirements.txt / pyproject / package.json, proven by round trip; **commit + redeploy still to do** **[CRITICAL]**
+- [x] **B — Missing dependency:** proven live end to end — deploy failed, log read, `httpx` added, committed, redeployed, healthy in 94s **[CRITICAL]**
 - [x] **C — Missing env var:** detected from the crash log; sets a non-secret with a declared default, escalates anything secret-shaped **[STRETCH]**
 - [x] **D — Wrong start command:** detected from a missing executable or entry file; will not re-propose the command that just failed **[STRETCH]**
 - [ ] `rollback_deployment()` — revert to last healthy deploy **[STRETCH]**
@@ -152,7 +152,7 @@ Profile any public repo without credentials, no model call involved:
 - [x] [`harbor-demo-clean`](https://github.com/aarochu/harbor-demo-clean) — FastAPI + Postgres, profiles clean with zero warnings
 - [x] [`harbor-demo-missing-dep`](https://github.com/aarochu/harbor-demo-missing-dep) — imports `httpx`, absent from the manifest; invisible to static profiling by design
 - [x] [`harbor-demo-port-mismatch`](https://github.com/aarochu/harbor-demo-port-mismatch) — binds `8000`; detected as `source: literal`, cited at `main.py:14`
-- [~] Each profiles as intended from its live URL (`npm run profile`); **failing in the intended way needs a real deploy**
+- [~] `missing-dep` verified to fail and self-heal live. **`port-mismatch` does NOT fail on Render** — Render auto-detects the listening port, and the conventional `uvicorn main:app --port $PORT` start command never runs the hardcoded bind. Needs redesign or dropping.
 
 ### Video (5:00) **[CRITICAL]**
 - [ ] 0:00–0:30 the manual loop, shown as pain
