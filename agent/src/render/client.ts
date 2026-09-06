@@ -16,6 +16,8 @@
  */
 import { registerSecret } from '../redact.js'
 import type {
+  LogEntry,
+  LogType,
   CreatePostgresInput,
   CreateServiceResult,
   CreateWebServiceInput,
@@ -113,6 +115,8 @@ interface RequestOptions {
   path: string
   body?: unknown
   query?: Record<string, string | number | undefined>
+  /** Parameters that may appear more than once, such as Render's `type`. */
+  repeatedQuery?: Record<string, string[]>
   /**
    * Override the default retry policy. Set for writes that are safe to repeat
    * — updating an env var to a fixed value is idempotent; creating a service
@@ -341,6 +345,55 @@ export class RenderClient {
   }
 
   // -------------------------------------------------------------------------
+  // Logs
+  // -------------------------------------------------------------------------
+
+  /**
+   * Fetch service output.
+   *
+   * Bounded on purpose. A failed pip install can run to thousands of lines of
+   * "Using cached ...", and the one line that explains the failure is at the
+   * end. Everything downstream — diagnosis, persistence, and eventually a model
+   * context window — is better served by the tail than by the whole thing.
+   */
+  async getLogs(options: {
+    ownerId: string
+    resource: string
+    type?: LogType[]
+    limit?: number
+  }): Promise<LogEntry[]> {
+    const query: Record<string, string | number> = {
+      ownerId: options.ownerId,
+      resource: options.resource,
+      limit: options.limit ?? 100,
+    }
+
+    const raw = await this.#request<unknown>({
+      method: 'GET',
+      path: '/logs',
+      query,
+      // `type` repeats rather than being comma-joined, so it is appended
+      // separately from the single-valued parameters.
+      repeatedQuery: options.type === undefined ? undefined : { type: options.type },
+    })
+
+    if (raw === null || typeof raw !== 'object') return []
+    const logs = (raw as { logs?: unknown }).logs
+    if (!Array.isArray(logs)) return []
+
+    return logs
+      .map((entry): LogEntry | undefined => {
+        if (entry === null || typeof entry !== 'object') return undefined
+        const record = entry as { message?: unknown; timestamp?: unknown }
+        if (typeof record.message !== 'string') return undefined
+        return typeof record.timestamp === 'string'
+          ? { message: record.message, timestamp: record.timestamp }
+          : { message: record.message }
+      })
+      .filter((entry): entry is LogEntry => entry !== undefined)
+  }
+
+  // -------------------------------------------------------------------------
   // Postgres
   // -------------------------------------------------------------------------
 
@@ -386,7 +439,7 @@ export class RenderClient {
   // -------------------------------------------------------------------------
 
   async #request<T>(options: RequestOptions): Promise<T> {
-    const url = this.#buildUrl(options.path, options.query)
+    const url = this.#buildUrl(options.path, options.query, options.repeatedQuery)
     const isRead = options.method === 'GET' || options.method === 'HEAD'
     const retryOnServerError = options.retryOnServerError ?? isRead
 
@@ -471,10 +524,17 @@ export class RenderClient {
     return Math.min(Math.round(exponential * jitter), MAX_BACKOFF_MS)
   }
 
-  #buildUrl(path: string, query?: RequestOptions['query']): string {
+  #buildUrl(
+    path: string,
+    query?: RequestOptions['query'],
+    repeated?: RequestOptions['repeatedQuery'],
+  ): string {
     const url = new URL(`${this.#baseUrl}${path}`)
     for (const [key, value] of Object.entries(query ?? {})) {
       if (value !== undefined && value !== '') url.searchParams.set(key, String(value))
+    }
+    for (const [key, values] of Object.entries(repeated ?? {})) {
+      for (const value of values) url.searchParams.append(key, value)
     }
     return url.toString()
   }

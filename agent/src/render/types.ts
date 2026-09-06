@@ -181,6 +181,21 @@ export interface PostgresConnectionInfo {
   psqlCommand?: string
 }
 
+/**
+ * One line of service output.
+ *
+ * Render separates build output from application output, and the distinction
+ * matters for diagnosis: a dependency that fails to install shows up in
+ * `build`, whereas one that installs and then fails to import shows up in
+ * `app`. Reading only the build log would miss the second entirely.
+ */
+export interface LogEntry {
+  timestamp?: string
+  message: string
+}
+
+export type LogType = 'app' | 'build' | 'request'
+
 /** Cursor-paginated list envelope used across the API. */
 export interface Paginated<T> {
   items: T[]

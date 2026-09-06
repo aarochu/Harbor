@@ -37,6 +37,8 @@ import type {
   CreatePostgresInput,
   CreateWebServiceInput,
   Deploy,
+  LogEntry,
+  LogType,
   PostgresConnectionInfo,
   PostgresInstance,
   Runtime,
@@ -64,6 +66,16 @@ export interface DeployTarget {
    * never built, and the loop would judge its own repair a failure.
    */
   updateServiceBranch?: (serviceId: string, branch: string) => Promise<Service>
+  /**
+   * Fetch service output. Optional, but without it a failed deploy is only a
+   * status word, and no failure class can be recognised from a status word.
+   */
+  getLogs?: (options: {
+    ownerId: string
+    resource: string
+    type?: LogType[]
+    limit?: number
+  }) => Promise<LogEntry[]>
   createPostgres: (input: CreatePostgresInput) => Promise<PostgresInstance>
   getPostgresConnectionInfo: (postgresId: string) => Promise<PostgresConnectionInfo>
 }
@@ -200,6 +212,14 @@ export interface LoopDeps {
 
 const HARBOR_BRANCH = 'harbor/auto-fix'
 const DEFAULT_HEALTH_PATH = '/health'
+/**
+ * Lines of each log stream to keep.
+ *
+ * The explanation of a failure is at the end; the beginning is dependency
+ * resolution noise. Keeping the tail is what stops a 3000-line pip install
+ * from crowding out the one line that matters.
+ */
+const LOG_TAIL_LINES = 120
 
 // ---------------------------------------------------------------------------
 // The loop
@@ -348,6 +368,7 @@ export async function runDeployment(input: RunInput, deps: LoopDeps): Promise<Ru
       const outcome = await deployAndVerify(
         {
           serviceId,
+          ownerId: input.ownerId,
           profile,
           probe,
           healthCheckPath,
@@ -479,6 +500,7 @@ type VerifyOutcome =
 async function deployAndVerify(
   context: {
     serviceId: string
+    ownerId: string
     profile: RepoProfile
     probe: typeof checkHealth
     healthCheckPath: string
@@ -509,12 +531,16 @@ async function deployAndVerify(
   }
 
   if (waited.outcome === 'failed') {
+    const logs = await fetchLogs(context.ownerId, context.serviceId, deps)
     return {
       kind: 'broken',
       diagnosis: diagnose({
         phase: 'build',
         buildSucceeded: false,
-        buildLogs: describeDeploy(waited.deploy),
+        // The deploy status alone names no failure class. The logs are the
+        // evidence; the status is only the trigger to go and read them.
+        buildLogs: [describeDeploy(waited.deploy), logs.build].filter(Boolean).join('\n'),
+        ...(logs.app === '' ? {} : { runtimeLogs: logs.app }),
         profile: context.profile,
       }),
     }
@@ -537,6 +563,8 @@ async function deployAndVerify(
 
   if (health.status === 'healthy') return { kind: 'healthy', url, health }
 
+  const logs = await fetchLogs(context.ownerId, context.serviceId, deps)
+
   return {
     kind: 'broken',
     diagnosis: diagnose({
@@ -546,10 +574,44 @@ async function deployAndVerify(
         status: health.status,
         ...(health.httpStatus === undefined ? {} : { httpStatus: health.httpStatus }),
       },
-      runtimeLogs: health.detail,
+      runtimeLogs: [logs.app, health.detail].filter(Boolean).join('\n'),
+      ...(logs.build === '' ? {} : { buildLogs: logs.build }),
       profile: context.profile,
     }),
   }
+}
+
+/**
+ * Pull the tail of both log streams.
+ *
+ * Failures here are swallowed on purpose: losing the logs makes the diagnosis
+ * worse, but it should not turn a diagnosable deployment failure into a crashed
+ * run. An empty string simply means the diagnoser has less to go on.
+ */
+async function fetchLogs(
+  ownerId: string,
+  serviceId: string,
+  deps: LoopDeps,
+): Promise<{ build: string; app: string }> {
+  const getLogs = deps.target.getLogs
+  if (getLogs === undefined) return { build: '', app: '' }
+
+  const read = async (type: LogType): Promise<string> => {
+    try {
+      const entries = await getLogs.call(deps.target, {
+        ownerId,
+        resource: serviceId,
+        type: [type],
+        limit: LOG_TAIL_LINES,
+      })
+      return entries.map((entry) => entry.message).join('\n')
+    } catch {
+      return ''
+    }
+  }
+
+  const [build, app] = await Promise.all([read('build'), read('app')])
+  return { build, app }
 }
 
 async function resolveServiceUrl(
