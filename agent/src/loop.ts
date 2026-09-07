@@ -452,8 +452,24 @@ export async function runDeployment(input: RunInput, deps: LoopDeps): Promise<Ru
       // The fix is on Harbor's branch; the service is still building whatever
       // it was created with. Without this the redeploy rebuilds the unfixed
       // code and the loop concludes its own repair did not work.
-      if (applied.diff !== '' && deps.target.updateServiceBranch !== undefined) {
-        const update = deps.target.updateServiceBranch.bind(deps.target)
+      if (applied.diff !== '') {
+        const update = deps.target.updateServiceBranch?.bind(deps.target)
+        if (update === undefined) {
+          // The fix is committed to Harbor's branch and the service is still
+          // building the original one. Redeploying would rebuild the unfixed
+          // code, the same diagnosis would come back, and the fix budget would
+          // drain repairing something already repaired.
+          incident.outcome = 'escalated'
+          return escalate(
+            bus,
+            finish,
+            `The fix was committed to ${fixBranch}, but this deployment target cannot be ` +
+              'pointed at a different branch, so it would never be built. Deploy that branch ' +
+              'manually, or merge it.',
+            diagnosis,
+          )
+        }
+
         await trackStep(bus, `Point service at ${fixBranch}`, async () => {
           await update(serviceId, fixBranch)
         })

@@ -131,12 +131,22 @@ export async function checkHealth(
   }
 
   const elapsed = Date.now() - startedAt
+
+  // A server that answered is reachable, whatever it answered with. Reporting
+  // a 404 as `unreachable` claims nothing is listening, which is false, and it
+  // sent the fix loop after a service answering perfectly well on a different
+  // path — on that reading Harbor "repaired" a healthy deployment. The
+  // distinction the caller needs is "nothing is there" versus "something is
+  // there and it is not what we asked for".
   return {
-    status: 'unreachable',
+    status: lastStatus === undefined ? 'unreachable' : 'unhealthy',
     ...(lastStatus === undefined ? {} : { httpStatus: lastStatus }),
     latencyMs: elapsed,
     attempts,
     coldStart: false,
-    detail: `No acceptable response within ${String(totalTimeoutMs)}ms across ${String(attempts)} attempt(s). Last: ${lastDetail}`,
+    detail:
+      lastStatus === undefined
+        ? `Nothing answered within ${String(totalTimeoutMs)}ms across ${String(attempts)} attempt(s). Last: ${lastDetail}`
+        : `Service answered ${String(lastStatus)} but never acceptably, across ${String(attempts)} attempt(s) in ${String(totalTimeoutMs)}ms. Last: ${lastDetail}`,
   }
 }

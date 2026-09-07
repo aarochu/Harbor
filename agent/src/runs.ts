@@ -21,6 +21,8 @@ export type RunStatus = 'running' | 'succeeded' | 'failed' | 'escalated'
 export interface RunRecord {
   id: string
   repoUrl: string
+  /** Branch the run was asked to deploy. Absent means the repository default. */
+  branch?: string
   status: RunStatus
   startedAt: string
   endedAt?: string
@@ -92,12 +94,13 @@ export class RunRegistry {
    * loop out of here is what lets a run be driven by the CLI, a test, or the
    * server without three copies of the same wiring.
    */
-  start(id: string, repoUrl: string): { record: RunRecord; bus: EventBus } {
+  start(id: string, repoUrl: string, branch?: string): { record: RunRecord; bus: EventBus } {
     if (this.#runs.has(id)) throw new Error(`Run ${id} already exists`)
 
     const record: RunRecord = {
       id,
       repoUrl,
+      ...(branch === undefined ? {} : { branch }),
       status: 'running',
       startedAt: new Date().toISOString(),
     }

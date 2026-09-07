@@ -134,7 +134,21 @@ export async function cloneRepo(
   const parent = options.parentDir ?? tmpdir()
   const workdir = await mkdtemp(join(parent, 'harbor-'))
 
-  const args = ['clone', '--depth', '1', '--single-branch']
+  const args = [
+    'clone',
+    '--depth',
+    '1',
+    '--single-branch',
+    // Check out the bytes the repository actually stores. On Windows a global
+    // core.autocrlf rewrites line endings on checkout, so Harbor read CRLF,
+    // generated a diff full of \r, and then committed LF once git converted
+    // back — meaning the diff shown to the operator was not the diff that
+    // landed. The whole point of showing it is that they match.
+    '-c',
+    'core.autocrlf=false',
+    '-c',
+    'core.eol=lf',
+  ]
   if (options.branch) {
     if (!/^[\w./-]+$/.test(options.branch) || options.branch.startsWith('-')) {
       throw new RepoAccessError(`Unsafe branch name: ${options.branch}`)

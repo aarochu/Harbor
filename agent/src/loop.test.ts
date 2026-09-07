@@ -24,6 +24,7 @@ const SERVICE_URL = 'https://harbor-demo.onrender.com'
 function fakeTarget(options: { deployStatuses?: DeployStatus[] } = {}): DeployTarget & {
   deploys: number
   envVars: Map<string, string>
+  branchUpdates: string[]
 } {
   const statuses = options.deployStatuses ?? ['live']
   const service: Service = {
@@ -36,9 +37,16 @@ function fakeTarget(options: { deployStatuses?: DeployStatus[] } = {}): DeployTa
   const target = {
     deploys: 0,
     envVars: new Map<string, string>(),
+    branchUpdates: [] as string[],
 
     findOrCreateWebService: () => Promise.resolve({ service, created: true, deployId: 'dep-0' }),
     getService: () => Promise.resolve(service),
+    // RenderClient has this, so the stub must too. A stub less capable than the
+    // thing it stands in for hides the paths only the real one reaches.
+    updateServiceBranch: (_id: string, branch: string) => {
+      target.branchUpdates.push(branch)
+      return Promise.resolve(service)
+    },
     setEnvVar: (_id: string, key: string, value: string) => {
       target.envVars.set(key, value)
       return Promise.resolve()
@@ -224,6 +232,45 @@ void describe('runDeployment — self-healing', () => {
     assert.equal(result.incidents[0]?.failureClass, 'port_mismatch')
     assert.equal(result.incidents[0]?.outcome, 'resolved')
     assert.equal(target.deploys, 2, 'the fix must be followed by a redeploy')
+  })
+
+  void it('points the service at the fix branch before redeploying', async () => {
+    const target = fakeTarget()
+    const deps = await baseDeps('harbor-demo-port-mismatch', {
+      target,
+      checkHealthImpl: fakeHealth(['unreachable', 'healthy']),
+    })
+
+    await runDeployment(
+      { repoUrl: 'https://github.com/aarochu/harbor-demo-port-mismatch', ownerId: 'own-1' },
+      deps,
+    )
+
+    assert.equal(target.branchUpdates.length, 1)
+    assert.match(target.branchUpdates[0] ?? '', /^harbor\//)
+  })
+
+  // Without this the fix lands on Harbor's branch, the service keeps building
+  // the original one, and every redeploy reproduces the same failure until the
+  // budget is gone.
+  void it('escalates when the target cannot be pointed at the fix branch', async () => {
+    const target = fakeTarget()
+    // A target that can deploy but cannot switch branches.
+    const limited: DeployTarget = { ...target, updateServiceBranch: undefined }
+
+    const deps = await baseDeps('harbor-demo-port-mismatch', {
+      target: limited,
+      checkHealthImpl: fakeHealth(['unreachable', 'healthy']),
+    })
+
+    const result = await runDeployment(
+      { repoUrl: 'https://github.com/aarochu/harbor-demo-port-mismatch', ownerId: 'own-1' },
+      deps,
+    )
+
+    assert.equal(result.status, 'escalated')
+    assert.match(result.escalation?.reason ?? '', /cannot be\s+pointed at a different branch/)
+    assert.equal(result.incidents[0]?.outcome, 'escalated')
   })
 
   void it('commits to a Harbor branch, never the default one', async () => {

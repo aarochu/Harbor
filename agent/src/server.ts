@@ -60,7 +60,22 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
     chunks.push(buffer)
   }
   if (chunks.length === 0) return {}
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+  } catch {
+    // A body the client sent wrong is the client's fault. Letting the parse
+    // error fall through reported it as 500, which tells the caller to retry
+    // something that will never succeed.
+    throw new BadRequestError('Request body is not valid JSON')
+  }
+}
+
+class BadRequestError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'BadRequestError'
+  }
 }
 
 /**
@@ -249,7 +264,13 @@ const server = createServer((req, res) => {
       json(res, 404, { error: 'Not found' })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      json(res, error instanceof MissingCredentialsError ? 503 : 500, { error: message })
+      const status =
+        error instanceof BadRequestError
+          ? 400
+          : error instanceof MissingCredentialsError
+            ? 503
+            : 500
+      json(res, status, { error: message })
     }
   })()
 })

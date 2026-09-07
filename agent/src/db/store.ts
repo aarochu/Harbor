@@ -69,7 +69,10 @@ export class PostgresRunStore implements RunStore {
       `INSERT INTO deployments (id, repo_url, branch, status, started_at)
        VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (id) DO NOTHING`,
-      [record.id, record.repoUrl, 'main', record.status, record.startedAt],
+      // Not hardcoded: plenty of repositories still default to `master`, and a
+      // stored branch that always says "main" is worse than no branch at all
+      // because it reads as fact.
+      [record.id, record.repoUrl, record.branch ?? 'main', record.status, record.startedAt],
     )
   }
 

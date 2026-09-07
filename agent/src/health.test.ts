@@ -83,14 +83,33 @@ void describe('checkHealth', () => {
     assert.match(result.detail, /Connection failed/)
   })
 
-  void it('treats a 404 as not acceptable by default', async () => {
+  // A 404 is the server answering. Calling that "unreachable" claims nothing is
+  // listening, and on that reading Harbor once diagnosed a port mismatch on a
+  // service that was serving correctly from a different path.
+  void it('reports a 404 as unhealthy, not unreachable — something answered', async () => {
     const result = await checkHealth('https://example.test', {
       fetchImpl: scriptedFetch([404]),
       sleepImpl: noSleep,
       totalTimeoutMs: 50,
       retryDelayMs: 10,
     })
+
+    assert.equal(result.status, 'unhealthy')
+    assert.equal(result.httpStatus, 404)
+    assert.match(result.detail, /answered 404/)
+  })
+
+  void it('reports unreachable only when nothing ever answered', async () => {
+    const result = await checkHealth('https://example.test', {
+      fetchImpl: scriptedFetch([new Error('ECONNREFUSED')]),
+      sleepImpl: noSleep,
+      totalTimeoutMs: 50,
+      retryDelayMs: 10,
+    })
+
     assert.equal(result.status, 'unreachable')
+    assert.equal(result.httpStatus, undefined)
+    assert.match(result.detail, /Nothing answered/)
   })
 
   void it('honours a custom accept predicate', async () => {
