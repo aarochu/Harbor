@@ -68,8 +68,68 @@ async function listPostgres(): Promise<PostgresInstance[]> {
   })
 }
 
+/**
+ * Fix branches Harbor pushed.
+ *
+ * Run-scoped names are what let the writer refuse to force-push, and the cost
+ * is that every run leaves a branch behind. Three verification runs produced
+ * three; a demo week would produce dozens.
+ *
+ * Uses the GitHub API rather than the git CLI on purpose — the source-level
+ * guardrail restricts process spawning to workspace.ts and writer.ts, and this
+ * script has no business acquiring that.
+ */
+async function listFixBranches(repo: string): Promise<string[]> {
+  const token = process.env.GITHUB_TOKEN
+  if (token === undefined) return []
+
+  const response = await fetch(
+    `https://api.github.com/repos/${repo}/git/matching-refs/heads/harbor/fix-`,
+    {
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: 'application/vnd.github+json',
+        'user-agent': 'harbor-cleanup',
+      },
+    },
+  )
+  if (!response.ok) return []
+
+  const body: unknown = await response.json()
+  if (!Array.isArray(body)) return []
+  return body
+    .map((row) => (row as { ref?: string }).ref ?? '')
+    .filter((ref) => ref.startsWith('refs/heads/harbor/fix-'))
+    .map((ref) => ref.replace('refs/heads/', ''))
+}
+
+async function deleteBranch(repo: string, branch: string): Promise<void> {
+  const response = await fetch(`https://api.github.com/repos/${repo}/git/refs/heads/${branch}`, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${process.env.GITHUB_TOKEN ?? ''}`,
+      accept: 'application/vnd.github+json',
+      'user-agent': 'harbor-cleanup',
+    },
+  })
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`DELETE ${repo}#${branch} returned ${String(response.status)}`)
+  }
+}
+
+/** Demo repositories Harbor commits to. Nothing else is ever considered. */
+const DEMO_REPOS = (process.env.HARBOR_DEMO_REPOS ?? 'aarochu/harbor-demo-missing-dep')
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter((entry) => entry !== '')
+
 const services: Service[] = await client.listServices({ limit: 100 })
 const databases = await listPostgres()
+
+const branches: { repo: string; branch: string }[] = []
+for (const repo of DEMO_REPOS) {
+  for (const branch of await listFixBranches(repo)) branches.push({ repo, branch })
+}
 
 const eligible: Removable[] = [
   ...services
@@ -96,20 +156,23 @@ if (untouched.length > 0) {
   console.log()
 }
 
-if (eligible.length === 0) {
+if (eligible.length === 0 && branches.length === 0) {
   console.log('Nothing to clean up.')
   process.exit(0)
 }
 
 console.log(shouldDelete ? 'Deleting:' : 'Would delete (pass --delete to do it):')
 for (const entry of eligible) console.log(`  - ${entry.kind}  ${entry.name}  (${entry.id})`)
+for (const entry of branches) console.log(`  - branch    ${entry.repo}  ${entry.branch}`)
 
 if (!shouldDelete) {
   console.log('\nDry run. Nothing was changed.')
   process.exit(0)
 }
 
+const total = eligible.length + branches.length
 let failures = 0
+
 for (const entry of eligible) {
   try {
     await remove(entry)
@@ -121,5 +184,16 @@ for (const entry of eligible) {
   }
 }
 
-console.log(`\n[harbor] removed ${String(eligible.length - failures)} of ${String(eligible.length)}`)
+for (const entry of branches) {
+  try {
+    await deleteBranch(entry.repo, entry.branch)
+    console.log(`  removed ${entry.repo}#${entry.branch}`)
+  } catch (error) {
+    failures++
+    const message = error instanceof Error ? error.message : String(error)
+    console.error(`  FAILED ${entry.repo}#${entry.branch}: ${message}`)
+  }
+}
+
+console.log(`\n[harbor] removed ${String(total - failures)} of ${String(total)}`)
 process.exitCode = failures === 0 ? 0 : 1

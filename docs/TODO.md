@@ -135,8 +135,8 @@ Profile any public repo without credentials, no model call involved:
 - [x] Timeouts on every external call — `AbortController` per request in the Render client; `health.ts` already had per-attempt and total caps
 - [x] Backoff + retry on Render rate limits and on GitHub pushes — transient failures retry, a non-fast-forward never does
 - [x] Idempotent deploys — `findOrCreateWebService` keys on the service name; creates are never retried on 5xx, since the resource may already exist
-- [x] Orphaned Render resource cleanup script — `npm run cleanup`, dry run by default, only touches `harbor-demo-*`
-- [ ] Three consecutive clean end-to-end runs **[CRITICAL]**
+- [x] Orphaned resource cleanup — `npm run cleanup`, dry run by default; Render services and Postgres matching `harbor-demo-*`, plus the `harbor/fix-*` branches every run leaves behind
+- [x] Three consecutive clean end-to-end runs — 3/3 against live Render, 89s / 95s / 100s, each diagnosing and repairing the missing dependency from scratch **[CRITICAL]**
 
 ### Tests
 - [x] Unit tests for framework/port/dependency detection
