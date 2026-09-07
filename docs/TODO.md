@@ -165,7 +165,7 @@ Profile any public repo without credentials, no model call involved:
 
 ### Submission
 - [ ] README, SOW, TODO current
-- [ ] Architecture diagram exported
+- [x] Architecture diagram — [architecture.svg](architecture.svg)
 - [ ] Setup instructions verified from a clean clone
 - [x] Repo public, MIT license present, no secrets in history — full `git rev-list --all` scan finds only test fixtures and AWS's own documentation example key **[CRITICAL]**
 
