@@ -10,3 +10,6 @@ dist/
 npm-debug.log*
 .DS_Store
 __pycache__/
+
+# Personal recording notes, not part of the project
+docs/demo-script.md
