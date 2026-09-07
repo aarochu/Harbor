@@ -32,6 +32,15 @@
   --destructive: #dc2626;
   --on-destructive: #ffffff;
 
+  /*
+   * The same red, lightened, for text.
+   *
+   * #dc2626 reads at 3.67:1 on the card — under the 4.5:1 floor, on the one
+   * colour an operator most needs to read. Fills and borders carry no contrast
+   * requirement, so they keep the saturated red and only type moves.
+   */
+  --destructive-text: #f87171;
+
   /* Maintenance amber: in progress, no verdict yet. */
   --pending: #d97706;
 
@@ -50,6 +59,7 @@
   --color-on-primary: var(--on-primary);
   --color-destructive: var(--destructive);
   --color-on-destructive: var(--on-destructive);
+  --color-destructive-text: var(--destructive-text);
   --color-pending: var(--pending);
   --color-ring: var(--ring);
 

@@ -103,6 +103,12 @@ export default function MissionControl() {
             if (next !== undefined) setSummary(next);
           });
           refreshHistory();
+
+          // The server keeps the stream open after a run ends, so the socket is
+          // still healthy and the badge would read "live" indefinitely on a
+          // finished run. What the operator wants to know is whether the run is
+          // going, not whether a connection is.
+          setConnection("idle");
         }
       };
 
@@ -203,7 +209,7 @@ export default function MissionControl() {
           </button>
         </div>
         {error !== undefined && (
-          <p role="alert" className="mt-3 text-sm text-destructive">
+          <p role="alert" className="mt-3 text-sm text-destructive-text">
             {error}
           </p>
         )}
@@ -291,7 +297,7 @@ function TerminalBanner({
         failed ? "border-destructive bg-destructive/10" : "border-primary bg-primary/10"
       }`}
     >
-      <p className={`font-mono text-sm font-medium ${failed ? "text-destructive" : "text-primary"}`}>
+      <p className={`font-mono text-sm font-medium ${failed ? "text-destructive-text" : "text-primary"}`}>
         {status === "succeeded" ? "Succeeded" : status === "escalated" ? "Escalated" : "Failed"}
       </p>
 
@@ -412,7 +418,7 @@ function StepList({ steps }: { steps: readonly Step[] }) {
 function StepIcon({ status }: { status: StepStatus }) {
   const label = status === "ok" ? "passed" : status === "failed" ? "failed" : "in progress";
   const tone =
-    status === "ok" ? "text-primary" : status === "failed" ? "text-destructive" : "text-pending";
+    status === "ok" ? "text-primary" : status === "failed" ? "text-destructive-text" : "text-pending";
 
   return (
     <svg
@@ -517,7 +523,7 @@ function ActivityStream({
 
 function toneFor(type: HarborEvent["type"]): string {
   if (type === "run_failed" || type === "step_failed" || type === "incident_opened") {
-    return "text-destructive";
+    return "text-destructive-text";
   }
   if (type === "run_succeeded" || type === "step_succeeded" || type === "fix_applied") {
     return "text-primary";

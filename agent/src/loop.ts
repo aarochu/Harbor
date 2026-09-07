@@ -530,12 +530,17 @@ async function deployAndVerify(
     deps.target.triggerDeploy(context.serviceId),
   )
 
-  const waited = await waitForDeploy(deps.target, context.serviceId, deploy.id, {
-    bus,
-    ...(context.sleepImpl === undefined ? {} : { sleepImpl: context.sleepImpl }),
-    ...(deps.deployWaitMs === undefined ? {} : { timeoutMs: deps.deployWaitMs }),
-    ...(deps.deployPollMs === undefined ? {} : { intervalMs: deps.deployPollMs }),
-  })
+  // Tracked as a step of its own because it is where nearly all the time goes.
+  // Without it every step reports under a second while the run takes ninety,
+  // and the step list stops describing where the run actually is.
+  const waited = await trackStep(bus, 'Build and deploy', async () =>
+    waitForDeploy(deps.target, context.serviceId, deploy.id, {
+      bus,
+      ...(context.sleepImpl === undefined ? {} : { sleepImpl: context.sleepImpl }),
+      ...(deps.deployWaitMs === undefined ? {} : { timeoutMs: deps.deployWaitMs }),
+      ...(deps.deployPollMs === undefined ? {} : { intervalMs: deps.deployPollMs }),
+    }),
+  )
 
   if (waited.outcome === 'timed_out') {
     return {
