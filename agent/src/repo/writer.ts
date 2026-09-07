@@ -41,6 +41,27 @@ export interface GitWriterOptions {
   authorEmail?: string
   /** Push to the remote. False leaves the commit local, for a dry run. */
   push?: boolean
+  /** Attempts for a transient push failure. Default 3. */
+  maxPushAttempts?: number
+  sleepImpl?: (ms: number) => Promise<void>
+}
+
+/**
+ * Whether another attempt could plausibly succeed.
+ *
+ * Deliberately a allowlist of transient conditions rather than "retry unless
+ * it looks fatal": a non-fast-forward means someone else moved the branch, and
+ * hammering it neither resolves the conflict nor surfaces it any sooner.
+ */
+export function isRetryablePush(message: string): boolean {
+  const text = message.toLowerCase()
+
+  if (/non-fast-forward|fetch first|rejected|denied|not permitted|forbidden/.test(text)) {
+    return false
+  }
+  return /rate limit|timed out|timeout|connection|network|could not resolve|reset by peer|502|503|504|temporarily unavailable|early eof|rpc failed/.test(
+    text,
+  )
 }
 
 export interface CommitResult {
@@ -105,16 +126,41 @@ export class GitWriter {
     const commit = await git(['rev-parse', 'HEAD'])
 
     if (this.#options.push !== false) {
-      try {
-        // No --force, ever. A rejected push is a real conflict to surface.
-        await git(['push', '--set-upstream', 'origin', input.branch])
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        throw new CommitError(`Push of ${input.branch} was rejected: ${message}`)
-      }
+      await this.#push(git, input.branch)
     }
 
     return { commit }
+  }
+
+  /**
+   * Push, retrying only what retrying can fix.
+   *
+   * A rate limit or a dropped connection is worth another attempt; a rejected
+   * non-fast-forward is a real conflict and repeating it just fails slower.
+   * The push itself stays idempotent because it is never forced — a repeat
+   * either lands or reports the branch already up to date.
+   */
+  async #push(git: (args: string[]) => Promise<string>, branch: string): Promise<void> {
+    const attempts = this.#options.maxPushAttempts ?? 3
+    const sleep = this.#options.sleepImpl ?? ((ms) => new Promise((r) => setTimeout(r, ms)))
+    let last = ''
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        // No --force, ever. A rejected push is a real conflict to surface.
+        await git(['push', '--set-upstream', 'origin', branch])
+        return
+      } catch (error) {
+        last = error instanceof Error ? error.message : String(error)
+
+        if (!isRetryablePush(last) || attempt === attempts) {
+          throw new CommitError(`Push of ${branch} was rejected: ${last}`)
+        }
+        await sleep(500 * 2 ** (attempt - 1))
+      }
+    }
+
+    throw new CommitError(`Push of ${branch} failed after ${String(attempts)} attempts: ${last}`)
   }
 
   /**
@@ -168,8 +214,19 @@ async function tryGit(
   }
 }
 
-/** A branch name unique to one run, so a push never collides with an earlier one. */
+/**
+ * A branch name unique to one run, so a push never collides with an earlier one.
+ *
+ * Trailing and leading separators are trimmed after sanitising: an id made
+ * entirely of punctuation collapsed to a single dash and produced
+ * "harbor/fix--", which is a degenerate ref rather than a name.
+ */
 export function fixBranchFor(runId: string): string {
-  const safe = runId.replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 40)
+  const safe = runId
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^[-._]+|[-._]+$/g, '')
+    .slice(0, 40)
+    .replace(/[-._]+$/, '')
+
   return `harbor/fix-${safe === '' ? 'run' : safe}`
 }

@@ -65,8 +65,8 @@ Profile any public repo without credentials, no model call involved:
 ## M2 — Deployment execution (happy path)
 
 - [x] Render API client — bearer auth, method-aware retries, jittered backoff, `Retry-After`, typed errors (`RenderApiError`/`Auth`/`NotFound`/`RateLimit`/`Timeout`)
-- [~] `deploy_application()` — `createWebService` / `findOrCreateWebService` written and unit-tested; **unverified against the live API** (needs RENDER_API_KEY) **[CRITICAL]**
-- [~] `configure_database()` — `createPostgres` + `getPostgresConnectionInfo` written, every returned field auto-registered for redaction; **wiring and approval gate still to do** **[CRITICAL]**
+- [x] `deploy_application()` — verified live against Render **[CRITICAL]**
+- [~] `configure_database()` — wired into the loop behind the approval gate (silence is refusal, asserted by test); **the provisioning call itself is still unexercised live** **[CRITICAL]**
 - [x] `set_environment_variable()` — `setEnvVar` returns `void` by design; uses the single-key endpoint because the bulk `PUT` deletes omitted vars **[CRITICAL]**
 - [x] `get_deployment_status()` — `waitForDeploy` polls to terminal state; `timed_out` is a third outcome, never reported as failure
 - [ ] `run_build()` / `run_tests()` — sandboxed, capped, streaming output
@@ -99,7 +99,7 @@ Profile any public repo without credentials, no model call involved:
 - [x] `github_commit_changes()` — `GitWriter` commits in the clone, diff logged first, never force-pushes **[CRITICAL]**
 
 ### Failure classes
-- [~] **A — Port mismatch:** detect + rebind done and proven by round trip (the patched repo re-profiles with `bindsEnvPort: true`); **redeploy still to do** **[CRITICAL]**
+- [~] **A — Port mismatch:** detect, rebind, commit and redeploy all done and exercised live; **the fault does not reproduce on Render** (see M7), so the class is implemented but not demonstrable there **[CRITICAL]**
 - [x] **B — Missing dependency:** proven live end to end — deploy failed, log read, `httpx` added, committed, redeployed, healthy in 94s **[CRITICAL]**
 - [x] **C — Missing env var:** detected from the crash log; sets a non-secret with a declared default, escalates anything secret-shaped **[STRETCH]**
 - [x] **D — Wrong start command:** detected from a missing executable or entry file; will not re-propose the command that just failed **[STRETCH]**
@@ -125,7 +125,7 @@ Profile any public repo without credentials, no model call involved:
 
 ### Guardrails **[CRITICAL]**
 - [x] Tool allowlist enforced at the call boundary, not just in the prompt
-- [ ] No arbitrary shell execution against production
+- [x] No arbitrary shell execution — `execFile` with argv only, enforced by source-level tests: no `exec`, no `shell: true`, and only `repo/workspace.ts` and `repo/writer.ts` may spawn at all
 - [x] Prompt-injection resistance: repo README/comments cannot redirect the agent — add a test repo containing an injection attempt
 - [x] Secret redaction verified across logs, events, UI, and model context
 - [x] Fix budget, turn cap, and wall-clock cap all verified by test
@@ -133,9 +133,9 @@ Profile any public repo without credentials, no model call involved:
 
 ### Reliability
 - [x] Timeouts on every external call — `AbortController` per request in the Render client; `health.ts` already had per-attempt and total caps
-- [~] Backoff + retry on Render rate limits done (exponential + jitter, honours `Retry-After`); **GitHub side still to do**
+- [x] Backoff + retry on Render rate limits and on GitHub pushes — transient failures retry, a non-fast-forward never does
 - [x] Idempotent deploys — `findOrCreateWebService` keys on the service name; creates are never retried on 5xx, since the resource may already exist
-- [ ] Orphaned Render resource cleanup script
+- [x] Orphaned Render resource cleanup script — `npm run cleanup`, dry run by default, only touches `harbor-demo-*`
 - [ ] Three consecutive clean end-to-end runs **[CRITICAL]**
 
 ### Tests
@@ -167,7 +167,7 @@ Profile any public repo without credentials, no model call involved:
 - [ ] README, SOW, TODO current
 - [ ] Architecture diagram exported
 - [ ] Setup instructions verified from a clean clone
-- [ ] Repo public, license present, no secrets in history **[CRITICAL]**
+- [x] Repo public, MIT license present, no secrets in history — full `git rev-list --all` scan finds only test fixtures and AWS's own documentation example key **[CRITICAL]**
 
 ---
 

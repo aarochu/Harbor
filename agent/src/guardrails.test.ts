@@ -6,6 +6,9 @@
  * happy path still works.
  */
 import assert from 'node:assert/strict'
+import { readFileSync, readdirSync } from 'node:fs'
+import { dirname, join, relative, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, it } from 'node:test'
 import { BudgetExceededError, RunBudget } from './budget.js'
 import { EventBus } from './events.js'
@@ -201,5 +204,65 @@ void describe('secrets never reach the event log', () => {
     await registry.call('takes_token', { token: 'ghp_' + 'q'.repeat(36) })
 
     assert.ok(!JSON.stringify(bus.history).includes('q'.repeat(36)))
+  })
+})
+
+/**
+ * Source-level guardrails.
+ *
+ * "Harbor never runs a shell" is currently true because every author so far
+ * happened to reach for execFile. That is a convention, and a convention holds
+ * until someone in a hurry writes exec with an interpolated branch name. These
+ * read the source, so the property is enforced rather than merely observed.
+ */
+void describe('no arbitrary shell execution', () => {
+  const sourceFiles = (): { path: string; text: string }[] => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)))
+    const found: { path: string; text: string }[] = []
+
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) walk(full)
+        else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) {
+          found.push({ path: relative(root, full), text: readFileSync(full, 'utf8') })
+        }
+      }
+    }
+
+    walk(root)
+    return found
+  }
+
+  void it('spawns processes only through execFile, never a shell', () => {
+    for (const file of sourceFiles()) {
+      // exec and execSync interpolate through /bin/sh; execFile does not.
+      const shellExec = /(?<![.\w])exec(?:Sync)?\s*\(/.exec(file.text)
+      assert.equal(
+        shellExec,
+        null,
+        `${file.path} calls exec(); use execFile with an argv array instead`,
+      )
+    }
+  })
+
+  void it('never passes shell: true to a spawned process', () => {
+    for (const file of sourceFiles()) {
+      assert.ok(
+        !/\bshell\s*:\s*true/.test(file.text),
+        `${file.path} enables a shell for a spawned process`,
+      )
+    }
+  })
+
+  void it('only two modules are allowed to spawn anything at all', () => {
+    const spawners = sourceFiles()
+      .filter((file) => file.text.includes('node:child_process'))
+      .map((file) => file.path.replace(/\\/g, '/'))
+      .sort()
+
+    // Cloning and committing. Anything else gaining the ability to run a
+    // process is a decision that deserves to be noticed in review.
+    assert.deepEqual(spawners, ['repo/workspace.ts', 'repo/writer.ts'])
   })
 })
