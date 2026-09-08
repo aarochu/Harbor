@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 64" width="48" height="64">
+  <!--
+    Harbor mark. Built from separate stone shapes with gaps between them, the
+    way the original drawing is, so it reads on any background rather than
+    needing a white card behind it.
+
+    Fewer, larger stones than the source: thirty irregular shapes are handsome
+    at poster size and turn to mud at 28px, which is where a logo actually
+    lives.
+
+    A favicon cannot inherit currentColor, so this copy is a fixed colour — the
+    operational green the interface already uses for a healthy service.
+  -->
+  <g fill="#16a34a">
+    <circle cx="24" cy="4.2" r="2.3"/>
+    <path d="M24 6.6 L37.5 16.4 L10.5 16.4 Z"/>
+
+    <path fill-rule="evenodd" d="M13 17.2 H35 V25.4 H13 Z M15.6 19.4 H19.4 V23.4 H15.6 Z M21.6 19.4 H26.4 V23.4 H21.6 Z M28.6 19.4 H32.4 V23.4 H28.6 Z"/>
+
+    <path d="M9 26.2 H39 V29.4 H9 Z"/>
+
+    <path d="M16.2 30.8 L22.9 30.4 L23.4 36.4 L16.6 36.7 Z"/>
+    <path d="M24.6 30.4 L31.3 30.8 L31.6 36.7 L25.1 36.4 Z"/>
+
+    <path d="M14.8 37.9 L21.1 37.7 L21.4 43.7 L15.1 43.9 Z"/>
+    <path d="M22.4 37.7 L28.2 37.9 L28.4 43.9 L22.6 43.7 Z"/>
+    <path d="M29.5 37.9 L33.9 38.2 L34.3 43.9 L29.7 43.7 Z"/>
+
+    <path d="M13.4 45.1 L19.3 44.9 L19.6 50.9 L13.8 51.1 Z"/>
+    <path d="M20.6 44.9 L27.1 45.1 L27.3 50.9 L20.8 50.9 Z"/>
+    <path d="M28.4 45.1 L34.9 45.4 L35.4 51.1 L28.6 50.9 Z"/>
+
+    <path d="M12 52.3 L18.6 52.1 L18.9 58.6 L12.4 58.6 Z"/>
+    <path d="M30.2 52.1 L36.8 52.3 L37.3 58.6 L30.5 58.6 Z"/>
+
+    <path fill-rule="evenodd" d="M20.2 51.4 H27.8 V60 H20.2 Z M22 53.4 H26 V60 H22 Z"/>
+  </g>
+</svg>

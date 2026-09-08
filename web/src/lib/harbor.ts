@@ -175,24 +175,42 @@ export async function startRun(repoUrl: string): Promise<{ id: string }> {
   return (await response.json()) as { id: string };
 }
 
+/**
+ * Reads degrade rather than throw.
+ *
+ * A refused connection is an ordinary state — the operator started the web app
+ * before the agent — and letting it reject leaves an unhandled promise in the
+ * console while the page renders as though nothing is wrong. `getHealth`
+ * reports the unreachable case; these just return empty.
+ */
 export async function listRuns(): Promise<RunSummary[]> {
-  const response = await fetch(`${API_BASE}/api/runs`);
-  if (!response.ok) return [];
-  const body = (await response.json()) as { runs?: RunSummary[] };
-  return body.runs ?? [];
+  try {
+    const response = await fetch(`${API_BASE}/api/runs`);
+    if (!response.ok) return [];
+    const body = (await response.json()) as { runs?: RunSummary[] };
+    return body.runs ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function getRun(id: string): Promise<RunSummary | undefined> {
-  const response = await fetch(`${API_BASE}/api/runs/${id}`);
-  if (!response.ok) return undefined;
-  return (await response.json()) as RunSummary;
+  try {
+    const response = await fetch(`${API_BASE}/api/runs/${id}`);
+    if (!response.ok) return undefined;
+    return (await response.json()) as RunSummary;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface HarborHealth {
-  ready: boolean
+  ready: boolean;
   /** Which credentials are absent, when they are. */
-  missing?: string
-  persistence: "memory" | "postgres"
+  missing?: string;
+  persistence: "memory" | "postgres";
+  /** True when the agent server could not be reached at all. */
+  unreachable?: boolean;
 }
 
 /**
@@ -201,13 +219,17 @@ export interface HarborHealth {
  * Checked before the operator clicks rather than after, so a missing key reads
  * as a setup step instead of a failed run.
  */
-export async function getHealth(): Promise<HarborHealth | undefined> {
+export async function getHealth(): Promise<HarborHealth> {
   try {
     const response = await fetch(`${API_BASE}/api/health`);
-    if (!response.ok) return undefined;
+    if (!response.ok) {
+      return { ready: false, persistence: "memory", unreachable: true };
+    }
     return (await response.json()) as HarborHealth;
   } catch {
-    return undefined;
+    // Nothing is listening. Silence here reads to the operator as "idle", which
+    // is the one thing it is not.
+    return { ready: false, persistence: "memory", unreachable: true };
   }
 }
 

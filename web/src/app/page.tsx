@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   deriveIncidents,
   deriveSteps,
+  API_BASE,
   eventStreamUrl,
   formatClock,
   formatDuration,
@@ -174,11 +175,14 @@ export default function MissionControl() {
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
-      <header className="mb-8">
-        <h1 className="font-mono text-xl font-medium tracking-tight">Harbor</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Give it a repository. It deploys, watches, and repairs what it can.
-        </p>
+      <header className="mb-8 flex items-start gap-3">
+        <HarborMark />
+        <div>
+          <h1 className="font-mono text-xl font-medium tracking-tight">Harbor</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Give it a repository. It deploys, watches, and repairs what it can.
+          </p>
+        </div>
       </header>
 
       {health !== undefined && !health.ready && <SetupNotice health={health} />}
@@ -244,6 +248,23 @@ export default function MissionControl() {
  * which is exactly what reading it from the environment avoids.
  */
 function SetupNotice({ health }: { health: HarborHealth }) {
+  // Two different problems that look identical if you only say "not ready":
+  // nothing is listening, versus something is listening and unconfigured.
+  if (health.unreachable === true) {
+    return (
+      <section
+        role="status"
+        className="mb-6 rounded-md border border-destructive bg-destructive/10 px-4 py-4 text-sm"
+      >
+        <p className="font-medium text-destructive-text">Cannot reach the Harbor agent</p>
+        <p className="mt-1">
+          Nothing is answering at <code className="font-mono text-xs">{API_BASE}</code>. Start it
+          with <code className="font-mono text-xs">cd agent &amp;&amp; npm run serve</code>.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section
       role="status"
@@ -259,6 +280,53 @@ function SetupNotice({ health }: { health: HarborHealth }) {
         Credentials are read from the environment. Harbor never accepts them through this page.
       </p>
     </section>
+  );
+}
+
+/**
+ * The Harbor mark.
+ *
+ * Drawn as separate stone shapes with gaps between them rather than one
+ * silhouette, so it reads on any background instead of needing a light card
+ * behind it. Inherits currentColor for the same reason.
+ *
+ * Fewer, larger stones than the full artwork: thirty irregular shapes look
+ * good at poster size and turn to mud at 28px, which is the size a logo
+ * actually has to survive.
+ */
+function HarborMark() {
+  return (
+    <svg
+      viewBox="0 0 48 64"
+      className="mt-0.5 h-9 w-auto shrink-0 text-primary"
+      fill="currentColor"
+      role="img"
+      aria-label="Harbor"
+    >
+      <circle cx="24" cy="4.2" r="2.3" />
+      <path d="M24 6.6 L37.5 16.4 L10.5 16.4 Z" />
+      <path
+        fillRule="evenodd"
+        d="M13 17.2 H35 V25.4 H13 Z M15.6 19.4 H19.4 V23.4 H15.6 Z M21.6 19.4 H26.4 V23.4 H21.6 Z M28.6 19.4 H32.4 V23.4 H28.6 Z"
+      />
+      <path d="M9 26.2 H39 V29.4 H9 Z" />
+
+      <path d="M16.2 30.8 L22.9 30.4 L23.4 36.4 L16.6 36.7 Z" />
+      <path d="M24.6 30.4 L31.3 30.8 L31.6 36.7 L25.1 36.4 Z" />
+
+      <path d="M14.8 37.9 L21.1 37.7 L21.4 43.7 L15.1 43.9 Z" />
+      <path d="M22.4 37.7 L28.2 37.9 L28.4 43.9 L22.6 43.7 Z" />
+      <path d="M29.5 37.9 L33.9 38.2 L34.3 43.9 L29.7 43.7 Z" />
+
+      <path d="M13.4 45.1 L19.3 44.9 L19.6 50.9 L13.8 51.1 Z" />
+      <path d="M20.6 44.9 L27.1 45.1 L27.3 50.9 L20.8 50.9 Z" />
+      <path d="M28.4 45.1 L34.9 45.4 L35.4 51.1 L28.6 50.9 Z" />
+
+      <path d="M12 52.3 L18.6 52.1 L18.9 58.6 L12.4 58.6 Z" />
+      <path d="M30.2 52.1 L36.8 52.3 L37.3 58.6 L30.5 58.6 Z" />
+
+      <path fillRule="evenodd" d="M20.2 51.4 H27.8 V60 H20.2 Z M22 53.4 H26 V60 H22 Z" />
+    </svg>
   );
 }
 
