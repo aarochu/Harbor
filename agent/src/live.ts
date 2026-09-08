@@ -5,6 +5,7 @@
  * here, and a second copy of it drifting is exactly the kind of mistake that
  * ends with a paid resource provisioned by whichever entry point forgot.
  */
+import { createModelAdvisor } from './advisor.js'
 import { RunBudget } from './budget.js'
 import type { EventBus } from './events.js'
 import type { LoopDeps } from './loop.js'
@@ -23,6 +24,15 @@ export interface LiveOptions {
    */
   allowDatabase?: boolean
   onApproval?: (request: { action: string; detail: string }, approved: boolean) => void
+  /**
+   * Consult a model on whether a diagnosis is worth acting on.
+   *
+   * Defaults to on when a provider is configured. Turning it off leaves the
+   * rule-based advisor, which is what the run falls back to anyway whenever the
+   * model is unreachable — so a run costs nothing and still works with no model
+   * at all.
+   */
+  useModel?: boolean
 }
 
 export interface LiveRun {
@@ -52,6 +62,17 @@ export function createLiveRun(options: LiveOptions): LiveRun {
   const session = new RepoSession(githubToken === undefined ? {} : { token: githubToken })
   const fixBranch = fixBranchFor(options.runId)
 
+  const budget = new RunBudget({ bus: options.bus })
+
+  // A provider is configured when either an Anthropic key or AWS credentials
+  // are present. With neither, the model advisor would fail on every call and
+  // fall back anyway, so it is simply not installed.
+  const hasProvider =
+    Boolean(process.env.ANTHROPIC_API_KEY) ||
+    Boolean(process.env.AWS_PROFILE) ||
+    Boolean(process.env.AWS_ACCESS_KEY_ID)
+  const useModel = options.useModel ?? hasProvider
+
   const deps: LoopDeps = {
     target: new RenderClient({ apiKey }),
     repo: session,
@@ -60,7 +81,8 @@ export function createLiveRun(options: LiveOptions): LiveRun {
       ...(githubToken === undefined ? {} : { token: githubToken }),
     }),
     bus: options.bus,
-    budget: new RunBudget({ bus: options.bus }),
+    budget,
+    ...(useModel ? { advisor: createModelAdvisor({ bus: options.bus, budget }) } : {}),
     fixBranch,
     approve: (request) => {
       const approved = request.action === 'configure_database' && options.allowDatabase === true

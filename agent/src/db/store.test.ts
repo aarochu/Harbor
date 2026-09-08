@@ -7,14 +7,44 @@ import { PostgresRunStore, nullRunStore } from './store.js'
 const DATABASE_URL = process.env.DATABASE_URL
 
 /**
+ * Is there actually a database at the other end?
+ *
+ * An unset DATABASE_URL was already handled, but a set one pointing at a
+ * stopped container was not: seven tests went red with ECONNREFUSED and looked
+ * exactly like code defects. A missing database is a missing prerequisite, and
+ * the suite should say so rather than accuse the code.
+ */
+async function databaseReachable(url: string | undefined): Promise<boolean> {
+  if (url === undefined) return false
+  const { Client } = await import('pg')
+  const client = new Client({ connectionString: url, connectionTimeoutMillis: 1500 })
+  try {
+    await client.connect()
+    await client.query('SELECT 1')
+    return true
+  } catch {
+    return false
+  } finally {
+    await client.end().catch(() => undefined)
+  }
+}
+
+const reachable = await databaseReachable(DATABASE_URL)
+const skipReason =
+  DATABASE_URL === undefined
+    ? 'DATABASE_URL is not set'
+    : reachable
+      ? false
+      : `no database answering at ${new URL(DATABASE_URL).host} (docker compose up -d)`
+
+/**
  * These run against the real database, because the whole value of this layer is
  * whether the SQL matches the schema — and a mocked pg client would assert only
  * that the strings I wrote are the strings I wrote.
  *
- * Skipped rather than failed when no DATABASE_URL is set, so the suite still
- * passes on a machine with no Postgres.
+ * Skipped, with the reason stated, when there is nothing to run them against.
  */
-void describe('PostgresRunStore', { skip: DATABASE_URL === undefined }, () => {
+void describe('PostgresRunStore', { skip: skipReason }, () => {
   const store = new PostgresRunStore(DATABASE_URL ?? '')
 
   const record = (id: string): RunRecord => ({
